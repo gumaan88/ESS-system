@@ -41,16 +41,35 @@ export const getAllEmployees = async (): Promise<Employee[]> => {
     return querySnapshot.docs.map(doc => ({ uid: doc.id, ...(doc.data() as Record<string, any>) } as Employee));
 };
 
-// تم تعديل الدالة لترجع القائمة الثابتة بدلاً من قاعدة البيانات
 export const getServices = async (): Promise<ServiceDefinition[]> => {
-    return [PERMISSION_SERVICE_DEF];
+    const services: ServiceDefinition[] = [PERMISSION_SERVICE_DEF];
+    try {
+        const servicesCol = collection(db, 'services');
+        const querySnapshot = await getDocs(servicesCol);
+        querySnapshot.forEach((doc) => {
+             services.push({ id: doc.id, ...(doc.data() as any) } as ServiceDefinition);
+        });
+    } catch (error) {
+        console.warn("Could not fetch dynamic services:", error);
+    }
+    return services;
 };
 
-// تم تعديل الدالة لترجع تعريف الخدمة الثابت
 export const getServiceDefinition = async (serviceId: string): Promise<ServiceDefinition> => {
     if (serviceId === 'permission_request') {
         return PERMISSION_SERVICE_DEF;
     }
+    
+    try {
+        const docRef = doc(db, 'services', serviceId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return { id: docSnap.id, ...(docSnap.data() as Record<string, any>) } as ServiceDefinition;
+        }
+    } catch (error) {
+        console.warn("Error fetching service definition:", error);
+    }
+
     throw new Error("الخدمة غير موجودة أو لم يتم تفعيلها بعد.");
 };
 
@@ -317,4 +336,9 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
         const updatedHistory = [...request.history, newHistoryEntry];
         transaction.update(requestRef, { ...updateData, history: updatedHistory });
     });
+};
+
+export const addService = async (serviceData: Omit<ServiceDefinition, 'id'>): Promise<void> => {
+    const servicesCol = collection(db, 'services');
+    await addDoc(servicesCol, serviceData);
 };

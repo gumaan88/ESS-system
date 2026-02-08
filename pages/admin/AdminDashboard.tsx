@@ -9,19 +9,12 @@ const AdminDashboard: React.FC = () => {
                 <p className="mt-1 text-gray-500 dark:text-gray-400">إدارة الموظفين والخدمات وسير العمل.</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
                     <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">إدارة الموظفين</h3>
                     <p className="mt-2 text-gray-500 dark:text-gray-400">إضافة وتعديل بيانات الموظفين، تحديد الأدوار، تعيين المدراء، وتعديل الأرصدة.</p>
                     <Link to="/admin/users" className="mt-4 inline-block px-4 py-2 text-sm bg-indigo-100 text-indigo-800 rounded-md hover:bg-indigo-200">
                         الانتقال إلى إدارة الموظفين
-                    </Link>
-                </div>
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
-                    <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">إدارة الخدمات</h3>
-                    <p className="mt-2 text-gray-500 dark:text-gray-400">إنشاء وتعديل الخدمات المتاحة للموظفين ومسارات الموافقات الخاصة بها.</p>
-                     <Link to="/admin/services/new" className="mt-4 inline-block px-4 py-2 text-sm bg-indigo-100 text-indigo-800 rounded-md hover:bg-indigo-200">
-                        + إنشاء خدمة جديدة
                     </Link>
                 </div>
             </div>

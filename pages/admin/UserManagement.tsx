@@ -41,7 +41,7 @@ const UserManagement: React.FC = () => {
             console.error("Failed to fetch employees:", err);
             // Enhanced error handling for permissions
             if (err.code === 'permission-denied') {
-                setError('عذراً، تم رفض الوصول لقاعدة البيانات. (Permission Denied). يرجى التأكد من "Firestore Security Rules" في لوحة تحكم Firebase للسماح بالقراءة للمدراء.');
+                setError('عذراً، تم رفض الوصول لقاعدة البيانات (Permission Denied). تأكد من أن حسابك يمتلك صلاحية HR_ADMIN وأن "Firestore Security Rules" تسمح بالقراءة لدورك الوظيفي.');
             } else if (err.code === 'failed-precondition') {
                  setError('الاستعلام يتطلب فهرس (Index) في Firestore. راجع "Console Log" للحصول على رابط إنشاء الفهرس.');
             } else {

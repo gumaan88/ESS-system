@@ -12,6 +12,7 @@ const RequestForm = lazy(() => import('./pages/RequestForm'));
 const RequestDetails = lazy(() => import('./pages/RequestDetails'));
 const ManagerInbox = lazy(() => import('./pages/ManagerInbox'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
+const ServiceBuilder = lazy(() => import('./pages/admin/ServiceBuilder'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 interface ProtectedRouteProps {
@@ -64,6 +65,7 @@ const AppRouter: React.FC = () => {
           <Route path="request/:requestId" element={<RequestDetails />} />
           <Route path="inbox" element={<ProtectedRoute roles={['MANAGER', 'HR_ADMIN', 'CFO', 'CEO']}><ManagerInbox /></ProtectedRoute>} />
           <Route path="admin" element={<ProtectedRoute roles={['HR_ADMIN']}><AdminDashboard /></ProtectedRoute>} />
+          <Route path="admin/services/new" element={<ProtectedRoute roles={['HR_ADMIN']}><ServiceBuilder /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

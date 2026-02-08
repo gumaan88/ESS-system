@@ -61,6 +61,11 @@ export const getRequestDetails = async (requestId: string): Promise<Request> => 
 
 // --- محرك سير العمل وعمليات الكتابة (Workflow Engine & Write Operations) ---
 
+export const addService = async (service: Omit<ServiceDefinition, 'id'>): Promise<void> => {
+    const servicesCol = collection(db, 'services');
+    await addDoc(servicesCol, service);
+};
+
 const getNextAssignee = async (employeeId: string, service: ServiceDefinition, currentStepIndex: number): Promise<string | null> => {
     if (currentStepIndex + 1 >= service.approvalSteps.length) {
         return null; // تمت جميع الموافقات

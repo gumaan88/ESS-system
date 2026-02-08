@@ -31,7 +31,7 @@ const ManagerInbox: React.FC = () => {
     const [filterEmployee, setFilterEmployee] = useState('');
     const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
 
-    const isHOD = employeeData && (employeeData.systemRole === SystemRole.HOD || employeeData.systemRole === SystemRole.HR_SPECIALIST || employeeData.systemRole === SystemRole.HR_MANAGER);
+    const isHOD = employeeData && (employeeData.systemRole === SystemRole.HOD || employeeData.systemRole === SystemRole.HR_SPECIALIST || employeeData.systemRole === SystemRole.HR_MANAGER || employeeData.systemRole === SystemRole.HR_ADMIN);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -40,11 +40,23 @@ const ManagerInbox: React.FC = () => {
                 try {
                     // Fetch Inbox
                     const assignedRequests = await getAssignedRequests(user.uid);
+                    // Client-side Sort
+                    assignedRequests.sort((a, b) => {
+                        const timeA = a.createdAt ? a.createdAt.toMillis() : 0;
+                        const timeB = b.createdAt ? b.createdAt.toMillis() : 0;
+                        return timeB - timeA;
+                    });
                     setRequests(assignedRequests);
 
-                    // Fetch Dashboard Data if HOD
+                    // Fetch Dashboard Data if HOD or Admin
                     if (isHOD) {
                         const stats = await getSubordinatesRequests(user.uid);
+                         // Client-side Sort
+                         stats.sort((a, b) => {
+                            const timeA = a.createdAt ? a.createdAt.toMillis() : 0;
+                            const timeB = b.createdAt ? b.createdAt.toMillis() : 0;
+                            return timeB - timeA;
+                        });
                         setDashboardData(stats);
                     }
                 } catch (error) {
@@ -68,6 +80,7 @@ const ManagerInbox: React.FC = () => {
 
         // Filter by Month (based on Request Date in payload)
         filtered = filtered.filter(r => {
+             if (!r.payload.date) return false;
              const d = new Date(r.payload.date);
              return (d.getMonth() + 1) === Number(filterMonth);
         });
@@ -139,7 +152,7 @@ const ManagerInbox: React.FC = () => {
                                         <tr key={req.id}>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{req.employeeName}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{req.serviceTitle}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{req.createdAt.toDate().toLocaleDateString('ar-EG')}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{req.createdAt?.toDate().toLocaleDateString('ar-EG')}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm">
                                                 <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusChipClass(req.status)}`}>
                                                     {req.status}

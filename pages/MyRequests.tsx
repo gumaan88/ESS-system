@@ -34,6 +34,12 @@ const MyRequests: React.FC = () => {
                 setLoading(true);
                 try {
                     const userRequests = await getEmployeeRequests(user.uid);
+                    // Client-side sorting (Newest first)
+                    userRequests.sort((a, b) => {
+                        const timeA = a.createdAt ? a.createdAt.toMillis() : 0;
+                        const timeB = b.createdAt ? b.createdAt.toMillis() : 0;
+                        return timeB - timeA;
+                    });
                     setRequests(userRequests);
                 } catch (error) {
                     console.error("Error fetching requests:", error);
@@ -97,14 +103,14 @@ const MyRequests: React.FC = () => {
                                     <tr key={req.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="text-sm font-bold text-gray-900 dark:text-white">{req.serviceTitle}</div>
-                                            {req.serviceId === 'permission_request' && (
+                                            {req.serviceId === 'permission_request' && req.payload.date && (
                                                 <div className="text-xs text-gray-500">
                                                     {req.payload.date} | {req.payload.startTime} - {req.payload.endTime}
                                                 </div>
                                             )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {req.createdAt.toDate().toLocaleDateString('ar-EG')}
+                                            {req.createdAt?.toDate().toLocaleDateString('ar-EG')}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                                             <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusChipClass(req.status)}`}>
@@ -115,7 +121,6 @@ const MyRequests: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {/* We will just show "Pending" text or calculate user later. Simple indicator for now */}
                                             {req.status === RequestStatus.PENDING ? 'المدير المباشر' : '-'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-left text-sm font-medium">

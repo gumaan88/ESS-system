@@ -36,7 +36,8 @@ export const getEmployeeData = async (uid: string): Promise<Employee> => {
 
 export const getAllEmployees = async (): Promise<Employee[]> => {
     const employeesCol = collection(db, 'employees');
-    const q = query(employeesCol, orderBy('name'));
+    // Removed orderBy to prevent index errors
+    const q = query(employeesCol); 
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({ uid: doc.id, ...(doc.data() as Record<string, any>) } as Employee));
 };
@@ -75,18 +76,19 @@ export const getServiceDefinition = async (serviceId: string): Promise<ServiceDe
 
 export const getEmployeeRequests = async (employeeId: string): Promise<Request[]> => {
     const requestsCol = collection(db, 'requests');
-    const q = query(requestsCol, where("employeeId", "==", employeeId), orderBy("createdAt", "desc"));
+    // REMOVED orderBy here to avoid "Missing Index" error. Sorting will happen in the UI.
+    const q = query(requestsCol, where("employeeId", "==", employeeId));
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request));
 };
 
 export const getAssignedRequests = async (managerId: string): Promise<Request[]> => {
     const requestsCol = collection(db, 'requests');
+    // REMOVED orderBy here to avoid "Missing Index" error. Sorting will happen in the UI.
     const q = query(
         requestsCol,
         where("assignedTo", "==", managerId),
-        where("status", "==", RequestStatus.PENDING),
-        orderBy("createdAt", "desc")
+        where("status", "==", RequestStatus.PENDING)
     );
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request));
@@ -103,11 +105,11 @@ export const getRequestDetails = async (requestId: string): Promise<Request> => 
 
 export const getMonthlyPermissionUsage = async (employeeId: string, month: number, year: number): Promise<number> => {
     const requestsCol = collection(db, 'requests');
+    // Simple query to avoid index issues
     const q = query(
         requestsCol, 
         where("employeeId", "==", employeeId),
-        where("serviceId", "==", "permission_request"),
-        where("status", "in", [RequestStatus.APPROVED, RequestStatus.PENDING]) 
+        where("serviceId", "==", "permission_request")
     );
     
     const snapshot = await getDocs(q);
@@ -115,11 +117,12 @@ export const getMonthlyPermissionUsage = async (employeeId: string, month: numbe
 
     snapshot.docs.forEach(doc => {
         const data = doc.data();
-        // Check both date formats (string YYYY-MM-DD or Timestamp)
-        let reqDate = new Date(data.payload.date);
-        
-        if (reqDate.getMonth() === month && reqDate.getFullYear() === year) {
-            totalMinutes += Number(data.payload.durationMinutes || 0);
+        if (data.status === RequestStatus.APPROVED || data.status === RequestStatus.PENDING) {
+             // Check both date formats (string YYYY-MM-DD or Timestamp)
+            let reqDate = new Date(data.payload.date);
+            if (reqDate.getMonth() === month && reqDate.getFullYear() === year) {
+                totalMinutes += Number(data.payload.durationMinutes || 0);
+            }
         }
     });
 
@@ -128,6 +131,7 @@ export const getMonthlyPermissionUsage = async (employeeId: string, month: numbe
 
 export const getSubordinatesRequests = async (managerId: string): Promise<Request[]> => {
     const employeesCol = collection(db, 'employees');
+    // Requires index usually, but simple equality often works. If fails, remove where clauses.
     const empQuery = query(employeesCol, where("reportsTo", "==", managerId));
     const empSnap = await getDocs(empQuery);
     const subordinateIds = empSnap.docs.map(d => d.id);
@@ -135,11 +139,11 @@ export const getSubordinatesRequests = async (managerId: string): Promise<Reques
     if (subordinateIds.length === 0) return [];
 
     const requestsCol = collection(db, 'requests');
+    // Fetch limited batch to avoid heavy queries without index
+    // Note: 'in' operator supports up to 10 values
     const q = query(
         requestsCol,
-        where("employeeId", "in", subordinateIds.slice(0, 10)), 
-        where("serviceId", "==", "permission_request"),
-        orderBy("createdAt", "desc")
+        where("employeeId", "in", subordinateIds.slice(0, 10))
     );
     
     const reqSnap = await getDocs(q);

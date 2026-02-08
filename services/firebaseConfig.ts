@@ -2,19 +2,21 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// الوصول للمتغيرات البيئية مباشرة لتجنب أخطاء Undefined في بعض بيئات التشغيل
+// الوصول للمتغيرات البيئية بشكل آمن لتجنب أخطاء Undefined
+const env = (import.meta as any).env || {};
+
 export const firebaseConfig = {
-  apiKey: (import.meta as any).env.VITE_FIREBASE_API_KEY,
-  authDomain: (import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: (import.meta as any).env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: (import.meta as any).env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: (import.meta as any).env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: (import.meta as any).env.VITE_FIREBASE_APP_ID,
+  apiKey: env.VITE_FIREBASE_API_KEY,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.VITE_FIREBASE_APP_ID,
 };
 
 // التحقق من وجود المفاتيح لتنبيه المطور
 if (!firebaseConfig.apiKey) {
-  console.error("Firebase Configuration Error: VITE_FIREBASE_API_KEY is missing.");
+  console.error("Firebase Configuration Error: VITE_FIREBASE_API_KEY is missing. Please check your .env file.");
 }
 
 // تهيئة التطبيق بنمط Singleton

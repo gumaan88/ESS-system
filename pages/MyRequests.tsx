@@ -34,10 +34,10 @@ const MyRequests: React.FC = () => {
                 setLoading(true);
                 try {
                     const userRequests = await getEmployeeRequests(user.uid);
-                    // Client-side sorting (Newest first)
+                    // Safe Client-side sorting (Newest first)
                     userRequests.sort((a, b) => {
-                        const timeA = a.createdAt ? a.createdAt.toMillis() : 0;
-                        const timeB = b.createdAt ? b.createdAt.toMillis() : 0;
+                        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+                        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
                         return timeB - timeA;
                     });
                     setRequests(userRequests);
@@ -110,7 +110,7 @@ const MyRequests: React.FC = () => {
                                             )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {req.createdAt?.toDate().toLocaleDateString('ar-EG')}
+                                            {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('ar-EG') : 'غير متوفر'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                                             <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusChipClass(req.status)}`}>

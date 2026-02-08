@@ -36,7 +36,6 @@ export const getEmployeeData = async (uid: string): Promise<Employee> => {
 
 export const getAllEmployees = async (): Promise<Employee[]> => {
     const employeesCol = collection(db, 'employees');
-    // Removed orderBy to prevent index errors
     const q = query(employeesCol); 
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({ uid: doc.id, ...(doc.data() as Record<string, any>) } as Employee));
@@ -60,7 +59,6 @@ export const getServiceDefinition = async (serviceId: string): Promise<ServiceDe
     if (serviceId === 'permission_request') {
         return PERMISSION_SERVICE_DEF;
     }
-    
     try {
         const docRef = doc(db, 'services', serviceId);
         const docSnap = await getDoc(docRef);
@@ -70,28 +68,45 @@ export const getServiceDefinition = async (serviceId: string): Promise<ServiceDe
     } catch (error) {
         console.warn("Error fetching service definition:", error);
     }
-
     throw new Error("الخدمة غير موجودة أو لم يتم تفعيلها بعد.");
 };
 
 export const getEmployeeRequests = async (employeeId: string): Promise<Request[]> => {
     const requestsCol = collection(db, 'requests');
-    // REMOVED orderBy here to avoid "Missing Index" error. Sorting will happen in the UI.
+    // Query ONLY by employeeId. No sorting, no other filtering here to ensure it works without custom indexes.
     const q = query(requestsCol, where("employeeId", "==", employeeId));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request));
+    
+    try {
+        const querySnapshot = await getDocs(q);
+        const reqs = querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request));
+        console.log(`Fetched ${reqs.length} requests for employee ${employeeId}`);
+        return reqs;
+    } catch (e) {
+        console.error("Error in getEmployeeRequests:", e);
+        throw e;
+    }
 };
 
 export const getAssignedRequests = async (managerId: string): Promise<Request[]> => {
     const requestsCol = collection(db, 'requests');
-    // REMOVED orderBy here to avoid "Missing Index" error. Sorting will happen in the UI.
+    // Removed 'status' filter from query to avoid composite index requirement.
+    // We will filter in Javascript.
     const q = query(
         requestsCol,
-        where("assignedTo", "==", managerId),
-        where("status", "==", RequestStatus.PENDING)
+        where("assignedTo", "==", managerId)
     );
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request));
+    
+    try {
+        const querySnapshot = await getDocs(q);
+        const allAssigned = querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request));
+        // Filter purely in JS for safety
+        const pending = allAssigned.filter(r => r.status === RequestStatus.PENDING);
+        console.log(`Fetched ${allAssigned.length} total assigned, ${pending.length} are pending for manager ${managerId}`);
+        return pending;
+    } catch (e) {
+        console.error("Error in getAssignedRequests:", e);
+        throw e;
+    }
 };
 
 export const getRequestDetails = async (requestId: string): Promise<Request> => {
@@ -105,24 +120,27 @@ export const getRequestDetails = async (requestId: string): Promise<Request> => 
 
 export const getMonthlyPermissionUsage = async (employeeId: string, month: number, year: number): Promise<number> => {
     const requestsCol = collection(db, 'requests');
-    // Simple query to avoid index issues
+    // Simple query
     const q = query(
         requestsCol, 
-        where("employeeId", "==", employeeId),
-        where("serviceId", "==", "permission_request")
+        where("employeeId", "==", employeeId)
     );
     
     const snapshot = await getDocs(q);
     let totalMinutes = 0;
 
     snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.status === RequestStatus.APPROVED || data.status === RequestStatus.PENDING) {
-             // Check both date formats (string YYYY-MM-DD or Timestamp)
-            let reqDate = new Date(data.payload.date);
-            if (reqDate.getMonth() === month && reqDate.getFullYear() === year) {
-                totalMinutes += Number(data.payload.durationMinutes || 0);
-            }
+        const data = doc.data() as Request;
+        // Client-side filtering
+        if (data.serviceId === 'permission_request' && 
+           (data.status === RequestStatus.APPROVED || data.status === RequestStatus.PENDING)) {
+             
+             if (data.payload && data.payload.date) {
+                let reqDate = new Date(data.payload.date);
+                if (reqDate.getMonth() === month && reqDate.getFullYear() === year) {
+                    totalMinutes += Number(data.payload.durationMinutes || 0);
+                }
+             }
         }
     });
 
@@ -131,7 +149,6 @@ export const getMonthlyPermissionUsage = async (employeeId: string, month: numbe
 
 export const getSubordinatesRequests = async (managerId: string): Promise<Request[]> => {
     const employeesCol = collection(db, 'employees');
-    // Requires index usually, but simple equality often works. If fails, remove where clauses.
     const empQuery = query(employeesCol, where("reportsTo", "==", managerId));
     const empSnap = await getDocs(empQuery);
     const subordinateIds = empSnap.docs.map(d => d.id);
@@ -139,15 +156,24 @@ export const getSubordinatesRequests = async (managerId: string): Promise<Reques
     if (subordinateIds.length === 0) return [];
 
     const requestsCol = collection(db, 'requests');
-    // Fetch limited batch to avoid heavy queries without index
-    // Note: 'in' operator supports up to 10 values
-    const q = query(
-        requestsCol,
-        where("employeeId", "in", subordinateIds.slice(0, 10))
-    );
+    // Using 'in' operator. Max 10 items.
+    // If more than 10 subordinates, this needs a loop or different logic, but fine for now.
+    const chunks = [];
+    for (let i = 0; i < subordinateIds.length; i += 10) {
+        chunks.push(subordinateIds.slice(i, i + 10));
+    }
+
+    let allRequests: Request[] = [];
     
-    const reqSnap = await getDocs(q);
-    return reqSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request));
+    for (const chunk of chunks) {
+        const q = query(requestsCol, where("employeeId", "in", chunk));
+        const reqSnap = await getDocs(q);
+        reqSnap.forEach(doc => {
+            allRequests.push({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request);
+        });
+    }
+
+    return allRequests;
 };
 
 // --- محرك سير العمل وعمليات الكتابة (Workflow Engine & Write Operations) ---
@@ -223,7 +249,6 @@ const getNextAssignee = async (employeeId: string, service: ServiceDefinition, c
 
     if (nextStep.type === ApprovalStepType.REPORTS_TO) {
         const employee = await getEmployeeData(employeeId);
-        // CRITICAL FIX: Throw clear error if no manager assigned
         if (!employee.reportsTo) {
             throw new Error("عذراً، لا يمكن تقديم الطلب لأنه لم يتم تعيين مدير مباشر لك في النظام. يرجى مراجعة إدارة الموارد البشرية.");
         }
@@ -263,7 +288,6 @@ export const createRequest = async (employeeId: string, employeeName: string, se
     } else {
         const next = await getNextAssignee(employeeId, service, -1);
         if (!next) {
-            // Should be caught by error handling in UI, but just in case
             throw new Error("تعذر تحديد المسؤول عن الموافقة الأولى.");
         }
         initialAssignee = next;
@@ -301,7 +325,6 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
         if (!requestSnap.exists()) throw new Error("الطلب غير موجود");
     
         const request = requestSnap.data() as Request;
-        // Fetch definition from hardcoded constant logic
         const service = await getServiceDefinition(request.serviceId);
         
         const newHistoryEntry = {

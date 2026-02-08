@@ -40,10 +40,10 @@ const ManagerInbox: React.FC = () => {
                 try {
                     // Fetch Inbox
                     const assignedRequests = await getAssignedRequests(user.uid);
-                    // Client-side Sort
+                    // Safe Client-side Sort
                     assignedRequests.sort((a, b) => {
-                        const timeA = a.createdAt ? a.createdAt.toMillis() : 0;
-                        const timeB = b.createdAt ? b.createdAt.toMillis() : 0;
+                        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+                        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
                         return timeB - timeA;
                     });
                     setRequests(assignedRequests);
@@ -51,10 +51,10 @@ const ManagerInbox: React.FC = () => {
                     // Fetch Dashboard Data if HOD or Admin
                     if (isHOD) {
                         const stats = await getSubordinatesRequests(user.uid);
-                         // Client-side Sort
+                         // Safe Client-side Sort
                          stats.sort((a, b) => {
-                            const timeA = a.createdAt ? a.createdAt.toMillis() : 0;
-                            const timeB = b.createdAt ? b.createdAt.toMillis() : 0;
+                            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+                            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
                             return timeB - timeA;
                         });
                         setDashboardData(stats);
@@ -80,7 +80,7 @@ const ManagerInbox: React.FC = () => {
 
         // Filter by Month (based on Request Date in payload)
         filtered = filtered.filter(r => {
-             if (!r.payload.date) return false;
+             if (!r.payload || !r.payload.date) return false;
              const d = new Date(r.payload.date);
              return (d.getMonth() + 1) === Number(filterMonth);
         });
@@ -152,7 +152,9 @@ const ManagerInbox: React.FC = () => {
                                         <tr key={req.id}>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{req.employeeName}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{req.serviceTitle}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{req.createdAt?.toDate().toLocaleDateString('ar-EG')}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                                {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('ar-EG') : 'غير متوفر'}
+                                            </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm">
                                                 <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusChipClass(req.status)}`}>
                                                     {req.status}

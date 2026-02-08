@@ -4,6 +4,63 @@ import { Employee, SystemRole } from '../../types';
 import Spinner from '../../components/Spinner';
 import Notification from '../../components/Notification';
 
+const FIRESTORE_RULES_SNIPPET = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // دالة للتحقق من صلاحية المسؤول
+    function isAdmin() {
+      return get(/databases/$(database)/documents/employees/$(request.auth.uid)).data.systemRole == 'HR_ADMIN';
+    }
+    
+    // قواعد الموظفين
+    match /employees/{userId} {
+      // يسمح بالقراءة للموظف نفسه أو المسؤول
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // يسمح بالكتابة (التعديل/الإنشاء) للمسؤول فقط (أو يمكن تخصيصها)
+      allow write: if isAdmin();
+    }
+    
+    // قواعد الطلبات
+    match /requests/{requestId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // قواعد الخدمات
+    match /services/{serviceId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+  }
+}`;
+
+const RulesModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(FIRESTORE_RULES_SNIPPET);
+        alert("تم نسخ القواعد إلى الحافظة");
+    };
+
+    return (
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-gray-900 bg-opacity-75 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full p-6 space-y-4">
+                <div className="flex justify-between items-center border-b dark:border-gray-700 pb-2">
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white">إعداد قواعد الأمان (Firestore Rules)</h3>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">✕</button>
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-300">
+                    <p className="mb-2">يبدو أنك تواجه مشكلة في الصلاحيات. لكي يعمل النظام بشكل صحيح، يجب نسخ القواعد التالية ووضعها في تبويب <strong>"Rules"</strong> داخل قسم <strong>Firestore Database</strong> في لوحة تحكم Firebase.</p>
+                </div>
+                <div className="bg-gray-900 text-green-400 p-4 rounded-md overflow-x-auto text-xs font-mono border border-gray-700" dir="ltr">
+                    <pre>{FIRESTORE_RULES_SNIPPET}</pre>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                    <button onClick={onClose} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded hover:bg-gray-300">إغلاق</button>
+                    <button onClick={copyToClipboard} className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">نسخ القواعد</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const UserManagement: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [loading, setLoading] = useState(true);
@@ -11,6 +68,7 @@ const UserManagement: React.FC = () => {
     const [showAddModal, setShowAddModal] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [showRulesModal, setShowRulesModal] = useState(false);
 
     // New Employee State
     const [newEmployee, setNewEmployee] = useState({
@@ -34,6 +92,7 @@ const UserManagement: React.FC = () => {
 
     const fetchEmployees = async () => {
         setLoading(true);
+        setError('');
         try {
             const data = await getAllEmployees();
             setEmployees(data);
@@ -41,7 +100,7 @@ const UserManagement: React.FC = () => {
             console.error("Failed to fetch employees:", err);
             // Enhanced error handling for permissions
             if (err.code === 'permission-denied') {
-                setError('عذراً، تم رفض الوصول لقاعدة البيانات (Permission Denied). تأكد من أن حسابك يمتلك صلاحية HR_ADMIN وأن "Firestore Security Rules" تسمح بالقراءة لدورك الوظيفي.');
+                setError('PERMISSION_DENIED');
             } else if (err.code === 'failed-precondition') {
                  setError('الاستعلام يتطلب فهرس (Index) في Firestore. راجع "Console Log" للحصول على رابط إنشاء الفهرس.');
             } else {
@@ -124,8 +183,10 @@ const UserManagement: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <Notification message={error} type="error" onClose={() => setError('')} />
+            {error !== 'PERMISSION_DENIED' && <Notification message={error} type="error" onClose={() => setError('')} />}
             <Notification message={success} type="success" onClose={() => setSuccess('')} />
+
+            {showRulesModal && <RulesModal onClose={() => setShowRulesModal(false)} />}
 
             <div className="flex justify-between items-center">
                 <div>
@@ -140,11 +201,31 @@ const UserManagement: React.FC = () => {
                 </button>
             </div>
             
-            {employees.length === 0 && !loading && error && (
-                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-center">
-                    <h3 className="text-red-800 dark:text-red-200 font-bold mb-2">تعذر الوصول للبيانات</h3>
-                    <p className="text-red-600 dark:text-red-300 text-sm">{error}</p>
+            {employees.length === 0 && !loading && error === 'PERMISSION_DENIED' && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-center space-y-4">
+                    <div className="flex flex-col items-center">
+                        <svg className="w-12 h-12 text-red-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <h3 className="text-red-800 dark:text-red-200 font-bold text-lg">تم رفض الوصول (Permission Denied)</h3>
+                        <p className="text-red-600 dark:text-red-300 text-sm max-w-lg mx-auto mt-2">
+                            لا يملك حسابك الصلاحيات اللازمة لقراءة قائمة الموظفين، أو أن قواعد أمان قاعدة البيانات (Firestore Rules) لم يتم إعدادها بشكل صحيح للسماح للمسؤولين بالوصول.
+                        </p>
+                    </div>
+                    <button 
+                        onClick={() => setShowRulesModal(true)}
+                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-md shadow-md transition-colors font-bold"
+                    >
+                        عرض طريقة الإصلاح (قواعد الأمان)
+                    </button>
                 </div>
+            )}
+            
+            {employees.length === 0 && !loading && error && error !== 'PERMISSION_DENIED' && (
+                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-center">
+                    <p className="text-red-600 dark:text-red-300">{error}</p>
+                    <button onClick={fetchEmployees} className="mt-4 text-indigo-600 hover:underline">إعادة المحاولة</button>
+                 </div>
             )}
 
             {employees.length > 0 && (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getServiceDefinition, createRequest, getMonthlyPermissionUsage } from '../services/firebaseService';
 import { ServiceDefinition, FieldType, FormField } from '../types';
@@ -7,63 +7,279 @@ import { useAuth } from '../hooks/useAuth';
 import Notification from '../components/Notification';
 import { uploadFile } from '../services/gasService';
 
-// --- Elegant Slider Component ---
-interface SliderProps {
-    label: string;
-    value: number;
-    min: number;
-    max: number;
-    onChange: (val: number) => void;
-    formatValue?: (val: number) => string;
+// --- Circular Time Picker Component ---
+
+interface CircularTimePickerProps {
+    startHour: number;
+    startMinute: number;
+    endHour: number;
+    endMinute: number;
+    onChangeStart: (h: number, m: number) => void;
+    onChangeEnd: (h: number, m: number) => void;
 }
 
-const ElegantSlider: React.FC<SliderProps> = ({ label, value, min, max, onChange, formatValue }) => {
-    // Calculate percentage for background gradient and thumb position
-    const percentage = ((value - min) / (max - min)) * 100;
+const CircularTimePicker: React.FC<CircularTimePickerProps> = ({ 
+    startHour, startMinute, endHour, endMinute, onChangeStart, onChangeEnd 
+}) => {
+    const svgRef = useRef<SVGSVGElement>(null);
+    const [isDraggingStart, setIsDraggingStart] = useState(false);
+    const [isDraggingEnd, setIsDraggingEnd] = useState(false);
+
+    // Constants for the clock
+    const CX = 128; // Center X
+    const CY = 128; // Center Y
+    const R = 100;  // Radius
+    const PADDING = 40; // Padding for container
+    const SIZE = (R + PADDING) * 2;
+
+    // Work hours constraints (8:00 to 16:00)
+    // We map 12-hour clock face to angles. 
+    // 12 is -90deg (0rad).
+    // 8 AM is 240deg (from top 12).
+    // 4 PM (16:00) is 120deg (from top 12).
+    
+    // Helper: Convert time to angle (degrees, 0 at top 12)
+    const timeToDegrees = (h: number, m: number) => {
+        // Convert to 12h format for visual position
+        let visualH = h % 12; 
+        if (visualH === 0 && h === 12) visualH = 12; // Handle 12 PM
+        
+        const totalMinutes = visualH * 60 + m;
+        // 12 hours = 720 minutes = 360 degrees
+        // angle = (minutes / 720) * 360
+        return (totalMinutes / 720) * 360;
+    };
+
+    // Helper: Convert angle to time (clamped to work hours 8-16)
+    const angleToTime = (angle: number) => {
+        // angle is 0-360 starting from 12 o'clock clockwise
+        let normalizedAngle = angle % 360;
+        if (normalizedAngle < 0) normalizedAngle += 360;
+
+        // Visual logic:
+        // 8 AM is at 240 deg.
+        // 12 PM is at 0/360 deg.
+        // 4 PM is at 120 deg.
+        
+        // We need to map the angle to linear minutes from 8:00 (480min) to 16:00 (960min)
+        // 8:00 (240deg) -> ... -> 12:00 (0deg) -> ... -> 16:00 (120deg)
+        
+        let minutesFrom12 = (normalizedAngle / 360) * 720; // 0 to 720
+        
+        // Interpret the time based on sectors
+        let h = Math.floor(minutesFrom12 / 60);
+        let m = Math.floor(minutesFrom12 % 60);
+        
+        // Round m to nearest 5 for easier selection
+        m = Math.round(m / 5) * 5;
+        if (m === 60) { m = 0; h += 1; }
+
+        // Logic to determine if it's AM or PM and clamp
+        let finalH = h;
+        
+        // Sector 8, 9, 10, 11 (Angles roughly 240 - 360) -> AM
+        if (normalizedAngle >= 230) {
+            if (h === 0) finalH = 12; // Should not happen with >= 230
+            // No adjustment needed for AM usually, but 8,9,10,11 are usually correct in visualH
+            // Wait, calculate absolute hours
+            // 240 deg = 8 hours. 
+        } else {
+            // Sector 12, 1, 2, 3, 4 (Angles 0 - 130) -> PM
+            // If h is 0 (12 oclock), it's 12 PM.
+            // If h is 1, 2, 3, 4, add 12 to make it 13, 14, 15, 16
+             if (h === 0) finalH = 12;
+             else finalH = h + 12;
+        }
+
+        // Hard Clamp
+        if (finalH < 8) {
+            // It might be late PM or early AM (not allowed)
+            // If user drags to 6 (180deg), snap to nearest (4 PM or 8 AM)
+            if (normalizedAngle > 180) return { h: 8, m: 0 };
+            return { h: 16, m: 0 };
+        }
+        if (finalH > 16) return { h: 16, m: 0 }; // Should be covered
+        if (finalH === 16 && m > 0) return { h: 16, m: 0 };
+
+        return { h: finalH, m };
+    };
+
+    const handleMove = (e: MouseEvent | TouchEvent, isStart: boolean) => {
+        if (!svgRef.current) return;
+        
+        const rect = svgRef.current.getBoundingClientRect();
+        let clientX, clientY;
+        
+        if ('touches' in e) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = (e as MouseEvent).clientX;
+            clientY = (e as MouseEvent).clientY;
+        }
+
+        const x = clientX - rect.left - CX;
+        const y = clientY - rect.top - CY;
+
+        // Calculate angle. Atan2 returns angle from X axis (3 o'clock). 
+        // We need angle from Y axis (12 o'clock) clockwise.
+        // Atan2: 0 is 3 oclock, PI/2 is 6, PI is 9, -PI/2 is 12.
+        let angleRad = Math.atan2(y, x);
+        let angleDeg = angleRad * (180 / Math.PI);
+        
+        // Convert standard math angle to Clock angle (0 at top, CW)
+        // Math: 0 at right (3). 
+        // Clock = (angleDeg + 90)
+        let clockAngle = angleDeg + 90;
+        if (clockAngle < 0) clockAngle += 360;
+
+        const { h, m } = angleToTime(clockAngle);
+
+        if (isStart) {
+            // Don't allow start > end
+            if (h > endHour || (h === endHour && m >= endMinute)) return;
+             onChangeStart(h, m);
+        } else {
+            // Don't allow end < start
+            if (h < startHour || (h === startHour && m <= startMinute)) return;
+            onChangeEnd(h, m);
+        }
+    };
+
+    useEffect(() => {
+        const handleUp = () => {
+            setIsDraggingStart(false);
+            setIsDraggingEnd(false);
+        };
+
+        const handleGlobalMove = (e: MouseEvent | TouchEvent) => {
+            if (isDraggingStart) handleMove(e, true);
+            if (isDraggingEnd) handleMove(e, false);
+        };
+
+        window.addEventListener('mouseup', handleUp);
+        window.addEventListener('touchend', handleUp);
+        window.addEventListener('mousemove', handleGlobalMove);
+        window.addEventListener('touchmove', handleGlobalMove, { passive: false });
+
+        return () => {
+            window.removeEventListener('mouseup', handleUp);
+            window.removeEventListener('touchend', handleUp);
+            window.removeEventListener('mousemove', handleGlobalMove);
+            window.removeEventListener('touchmove', handleGlobalMove);
+        };
+    }, [isDraggingStart, isDraggingEnd, startHour, startMinute, endHour, endMinute]);
+
+    // Render Helpers
+    const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
+        var angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+        return {
+            x: centerX + (radius * Math.cos(angleInRadians)),
+            y: centerY + (radius * Math.sin(angleInRadians))
+        };
+    };
+
+    const describeArc = (x: number, y: number, radius: number, startAngle: number, endAngle: number) => {
+        var start = polarToCartesian(x, y, radius, endAngle);
+        var end = polarToCartesian(x, y, radius, startAngle);
+        // Correct arc flag
+        var largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+        // Correction for crossing 360 boundary logic visually if needed, 
+        // but here we know range is 240 -> 360 -> 120 approx. 
+        // Simpler: total degrees span.
+        
+        let span = endAngle - startAngle;
+        if (span < 0) span += 360;
+        largeArcFlag = span > 180 ? "1" : "0";
+
+        var d = [
+            "M", start.x, start.y, 
+            "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y
+        ].join(" ");
+        return d;
+    };
+
+    const startDeg = timeToDegrees(startHour, startMinute);
+    const endDeg = timeToDegrees(endHour, endMinute);
+    
+    // Calculate arc path. Note: SVG path draws CCW or needs specific flags. 
+    // Start drawing from Start Time to End Time.
+    const arcPath = describeArc(CX, CY, R, startDeg, endDeg);
+
+    // Clock numbers (8, 9, 10, 11, 12, 1, 2, 3, 4)
+    const numbers = [8, 9, 10, 11, 12, 1, 2, 3, 4];
+
+    // Helper to position handles
+    const startPos = polarToCartesian(CX, CY, R, startDeg);
+    const endPos = polarToCartesian(CX, CY, R, endDeg);
 
     return (
-        // Force LTR for the slider container to ensure drag direction matches fill direction visually
-        <div className="w-full mb-6 relative px-2" dir="ltr">
-            <div className="flex justify-between mb-2" dir="rtl">
-                <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</span>
-            </div>
-            
-            <div className="relative w-full h-10 flex items-center group">
-                {/* Track Background */}
-                <div className="absolute w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
-                    <div 
-                        className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 transition-all duration-150 ease-out" 
-                        style={{ width: `${percentage}%` }}
-                    />
-                </div>
+        <div className="flex flex-col items-center justify-center py-4 select-none">
+            <svg 
+                ref={svgRef}
+                width={SIZE} 
+                height={SIZE} 
+                viewBox={`0 0 ${SIZE} ${SIZE}`} 
+                className="cursor-pointer"
+                onMouseDown={(e) => e.preventDefault()} // Prevent text selection
+            >
+                {/* Clock Face Circle */}
+                <circle cx={CX} cy={CY} r={R} fill="none" stroke="#e5e7eb" strokeWidth="20" className="dark:stroke-gray-700" />
+                
+                {/* Active Arc (Work Duration) */}
+                <path d={arcPath} fill="none" stroke="#6366f1" strokeWidth="20" strokeLinecap="round" className="opacity-30 dark:opacity-50" />
 
-                {/* The Range Input (Invisible but interactive) */}
-                <input 
-                    type="range" 
-                    min={min} 
-                    max={max} 
-                    value={value} 
-                    onChange={(e) => onChange(Number(e.target.value))}
-                    className="absolute w-full h-full opacity-0 cursor-pointer z-20"
-                />
+                {/* Clock Numbers */}
+                {numbers.map(num => {
+                    const angle = timeToDegrees(num, 0);
+                    const pos = polarToCartesian(CX, CY, R - 35, angle);
+                    return (
+                        <text 
+                            key={num} 
+                            x={pos.x} 
+                            y={pos.y} 
+                            dy="5" 
+                            textAnchor="middle" 
+                            className="text-xs font-bold fill-gray-400 dark:fill-gray-500 pointer-events-none"
+                        >
+                            {num}
+                        </text>
+                    );
+                })}
 
-                {/* Custom Thumb & Floating Value Bubble */}
-                <div 
-                    className="absolute h-8 w-8 bg-white dark:bg-gray-800 border-4 border-indigo-500 rounded-full shadow-xl flex items-center justify-center pointer-events-none transition-all duration-75 ease-out z-10"
-                    style={{ 
-                        left: `calc(${percentage}% - 16px)` 
-                    }}
+                {/* Ticks for 8am and 4pm limits */}
+                <circle cx={polarToCartesian(CX, CY, R, 240).x} cy={polarToCartesian(CX, CY, R, 240).y} r="4" fill="#9ca3af" />
+                <circle cx={polarToCartesian(CX, CY, R, 120).x} cy={polarToCartesian(CX, CY, R, 120).y} r="4" fill="#9ca3af" />
+
+                {/* Start Handle */}
+                <g 
+                    transform={`translate(${startPos.x}, ${startPos.y})`} 
+                    className="cursor-grab active:cursor-grabbing hover:scale-110 transition-transform"
+                    onMouseDown={() => setIsDraggingStart(true)}
+                    onTouchStart={() => setIsDraggingStart(true)}
                 >
-                    {/* The Value Tooltip above thumb */}
-                    <div className="absolute -top-12 bg-gray-900 text-white text-sm font-bold py-1 px-3 rounded-lg transform -translate-x-0 shadow-lg whitespace-nowrap transition-transform scale-100 origin-bottom">
-                        {formatValue ? formatValue(value) : value}
-                        <div className="absolute -bottom-1.5 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-gray-900 rotate-45"></div>
-                    </div>
-                </div>
-            </div>
+                    <circle r="16" fill="white" className="drop-shadow-lg" />
+                    <circle r="10" fill="#22c55e" /> {/* Green */}
+                    <text dy="4" textAnchor="middle" className="text-[10px] font-bold fill-white pointer-events-none">من</text>
+                </g>
+
+                {/* End Handle */}
+                <g 
+                    transform={`translate(${endPos.x}, ${endPos.y})`} 
+                    className="cursor-grab active:cursor-grabbing hover:scale-110 transition-transform"
+                    onMouseDown={() => setIsDraggingEnd(true)}
+                    onTouchStart={() => setIsDraggingEnd(true)}
+                >
+                    <circle r="16" fill="white" className="drop-shadow-lg" />
+                    <circle r="10" fill="#ef4444" /> {/* Red */}
+                    <text dy="4" textAnchor="middle" className="text-[10px] font-bold fill-white pointer-events-none">إلى</text>
+                </g>
+            </svg>
         </div>
     );
 };
+
+// --- Main Form Component ---
 
 const DynamicField: React.FC<{ field: FormField; value: any; onChange: (id: string, value: any) => void; }> = ({ field, value, onChange }) => {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -110,13 +326,12 @@ const RequestForm: React.FC = () => {
     const [error, setError] = useState('');
     const [permissionUsage, setPermissionUsage] = useState<number | null>(null);
 
-    // Slider States
+    // Clock States (Start 8:00, End 10:00 default)
     const [startHour, setStartHour] = useState(8);
     const [startMinute, setStartMinute] = useState(0);
     const [endHour, setEndHour] = useState(10);
     const [endMinute, setEndMinute] = useState(0);
 
-    // Check if it is the permission request service (using the hardcoded ID)
     const isPermissionService = serviceId === 'permission_request';
 
     useEffect(() => {
@@ -127,12 +342,10 @@ const RequestForm: React.FC = () => {
                 const serviceDef = await getServiceDefinition(serviceId);
                 setService(serviceDef);
                 
-                // If it is permission service, fetch usage
                 if (isPermissionService && user) {
                     const now = new Date();
                     const used = await getMonthlyPermissionUsage(user.uid, now.getMonth(), now.getFullYear());
                     setPermissionUsage(used);
-                    // Default Date to today
                     setFormData(prev => ({...prev, date: new Date().toISOString().split('T')[0]}));
                 }
             } catch (err) {
@@ -143,7 +356,6 @@ const RequestForm: React.FC = () => {
         fetchService();
     }, [serviceId, user, isPermissionService]);
 
-    // Update formData when sliders change
     useEffect(() => {
         if (isPermissionService) {
             const formattedStart = `${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`;
@@ -160,7 +372,6 @@ const RequestForm: React.FC = () => {
         setFormData(prev => ({ ...prev, [id]: value }));
     };
 
-    // Calculate duration for display
     const currentDuration = useMemo(() => {
         const start = startHour * 60 + startMinute;
         const end = endHour * 60 + endMinute;
@@ -184,16 +395,14 @@ const RequestForm: React.FC = () => {
         const durationMinutes = endTotalMinutes - startTotalMinutes;
         const durationHours = durationMinutes / 60;
 
-        // Check 8 AM rule (allow margin of 5 mins for lateness logic maybe? sticking to strict 08:00 for now)
         let type = "خروج أثناء الدوام";
         if (startHour === 8 && startMinute === 0) {
             type = "تأخر عن العمل";
         }
 
-        // Check Limit
         const currentUsage = permissionUsage || 0;
         if ((currentUsage + durationHours) > 8) {
-            return { valid: false, error: `لا يمكنك تقديم الطلب. رصيدك المستخدم: ${currentUsage.toFixed(2)} ساعة. الطلب الحالي: ${durationHours.toFixed(2)} ساعة. الإجمالي سيتجاوز 8 ساعات.` };
+            return { valid: false, error: `الرصيد غير كافي. المستخدم: ${currentUsage.toFixed(2)} س. الطلب: ${durationHours.toFixed(2)} س.` };
         }
 
         return { valid: true, calculatedType: type, durationMinutes };
@@ -224,7 +433,6 @@ const RequestForm: React.FC = () => {
         try {
             const payload: Record<string, any> = {};
             for (const field of service.fields) {
-                // Skip file logic if field is hidden/not used, but here generic logic holds
                 if (field.type === FieldType.FILE && finalPayload[field.id]) {
                     const file = finalPayload[field.id] as File;
                     const fileUrl = await uploadFile(file); 
@@ -276,11 +484,8 @@ const RequestForm: React.FC = () => {
             
             <form onSubmit={(e) => handleSubmit(e, false)} className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-md space-y-6">
                 
-                {/* 1. Generic Fields (Hide Time Inputs for Permissions) */}
                 {service.fields.map(field => {
-                    // Force Hide standard time inputs for permission service to use Custom UI
                     if (isPermissionService && (field.id === 'startTime' || field.id === 'endTime' || field.type === FieldType.TIME)) return null;
-                    
                     return (
                         <div key={field.id}>
                             <label htmlFor={field.id} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{field.label}</label>
@@ -289,84 +494,44 @@ const RequestForm: React.FC = () => {
                     );
                 })}
 
-                {/* 2. Custom Elegant Slider UI for Permissions */}
+                {/* Circular Time Picker UI */}
                 {isPermissionService && (
-                    <div className="mt-8 p-6 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 rounded-3xl border border-indigo-100 dark:border-gray-700 shadow-sm">
-                        <div className="flex items-center justify-between mb-8">
-                            <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                                <span className="bg-white dark:bg-gray-700 p-2 rounded-lg shadow-sm">⏱️</span> تحديد مدة الإذن
-                            </h3>
-                            <div className="text-right bg-white dark:bg-gray-800 px-4 py-2 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                                <span className="text-xs text-gray-500 block">المدة المحتسبة</span>
-                                <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight">
-                                    {Math.floor(currentDuration / 60)}<span className="text-sm font-normal text-gray-400 mx-1">س</span> 
-                                    {currentDuration % 60}<span className="text-sm font-normal text-gray-400 mx-1">د</span>
+                    <div className="mt-8 p-6 bg-gray-50 dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-inner">
+                        <div className="flex flex-col items-center">
+                            <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">تحديد وقت الإذن</h3>
+                            <p className="text-xs text-gray-500 mb-6">اسحب المقابض لتحديد وقت البداية والنهاية</p>
+                            
+                            <CircularTimePicker 
+                                startHour={startHour}
+                                startMinute={startMinute}
+                                endHour={endHour}
+                                endMinute={endMinute}
+                                onChangeStart={(h, m) => { setStartHour(h); setStartMinute(m); }}
+                                onChangeEnd={(h, m) => { setEndHour(h); setEndMinute(m); }}
+                            />
+
+                            <div className="flex justify-between w-full max-w-sm mt-8 gap-4">
+                                <div className="text-center p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-green-100 dark:border-green-900/30 flex-1">
+                                    <span className="text-xs text-green-600 dark:text-green-400 font-bold block mb-1">وقت البداية</span>
+                                    <span className="text-xl font-mono font-bold text-gray-800 dark:text-white">{pad(startHour)}:{pad(startMinute)}</span>
+                                </div>
+                                <div className="text-center p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-indigo-100 dark:border-indigo-900/30 flex-1">
+                                    <span className="text-xs text-indigo-600 dark:text-indigo-400 font-bold block mb-1">المدة</span>
+                                    <span className="text-xl font-mono font-bold text-gray-800 dark:text-white">
+                                        {Math.floor(currentDuration / 60)}:{pad(currentDuration % 60)}
+                                    </span>
+                                </div>
+                                <div className="text-center p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-red-100 dark:border-red-900/30 flex-1">
+                                    <span className="text-xs text-red-600 dark:text-red-400 font-bold block mb-1">وقت النهاية</span>
+                                    <span className="text-xl font-mono font-bold text-gray-800 dark:text-white">{pad(endHour)}:{pad(endMinute)}</span>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-4">
+                                 <span className={`px-4 py-1 rounded-full text-xs font-bold shadow-sm ${startHour === 8 && startMinute === 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
+                                    {startHour === 8 && startMinute === 0 ? "⚠️ تصنيف: تأخر عن العمل" : "ℹ️ تصنيف: خروج أثناء الدوام"}
                                 </span>
                             </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
-                            {/* FROM Section */}
-                            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg border-t-4 border-green-500 relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-20 h-20 bg-green-50 dark:bg-green-900/20 rounded-bl-full -mr-10 -mt-10"></div>
-                                <div className="flex items-center gap-3 mb-6 border-b border-gray-100 dark:border-gray-700 pb-4 relative z-10">
-                                    <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center text-green-600 font-bold text-xs">من</div>
-                                    <span className="font-bold text-gray-700 dark:text-gray-200 text-lg">وقت البداية</span>
-                                    <span className="mr-auto font-mono text-2xl font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-lg">
-                                        {pad(startHour)}:{pad(startMinute)}
-                                    </span>
-                                </div>
-                                <div className="space-y-6 relative z-10">
-                                    <ElegantSlider 
-                                        label="الساعة" 
-                                        min={0} max={23} 
-                                        value={startHour} 
-                                        onChange={setStartHour} 
-                                        formatValue={(v) => pad(v)}
-                                    />
-                                    <ElegantSlider 
-                                        label="الدقيقة" 
-                                        min={0} max={59} 
-                                        value={startMinute} 
-                                        onChange={setStartMinute}
-                                        formatValue={(v) => pad(v)} 
-                                    />
-                                </div>
-                            </div>
-
-                            {/* TO Section */}
-                            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg border-t-4 border-red-500 relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-bl-full -mr-10 -mt-10"></div>
-                                <div className="flex items-center gap-3 mb-6 border-b border-gray-100 dark:border-gray-700 pb-4 relative z-10">
-                                    <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center text-red-600 font-bold text-xs">إلى</div>
-                                    <span className="font-bold text-gray-700 dark:text-gray-200 text-lg">وقت النهاية</span>
-                                    <span className="mr-auto font-mono text-2xl font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-lg">
-                                        {pad(endHour)}:{pad(endMinute)}
-                                    </span>
-                                </div>
-                                <div className="space-y-6 relative z-10">
-                                    <ElegantSlider 
-                                        label="الساعة" 
-                                        min={0} max={23} 
-                                        value={endHour} 
-                                        onChange={setEndHour}
-                                        formatValue={(v) => pad(v)}
-                                    />
-                                    <ElegantSlider 
-                                        label="الدقيقة" 
-                                        min={0} max={59} 
-                                        value={endMinute} 
-                                        onChange={setEndMinute}
-                                        formatValue={(v) => pad(v)}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                         <div className="mt-8 flex justify-center">
-                            <span className={`px-6 py-2 rounded-full text-base font-bold shadow-sm transition-colors ${startHour === 8 && startMinute === 0 ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' : 'bg-indigo-100 text-indigo-800 border border-indigo-200'}`}>
-                                🏷️ تصنيف الإذن: {startHour === 8 && startMinute === 0 ? "تأخر عن العمل" : "خروج أثناء الدوام"}
-                            </span>
                         </div>
                     </div>
                 )}

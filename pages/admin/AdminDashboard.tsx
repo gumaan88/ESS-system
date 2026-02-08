@@ -12,10 +12,10 @@ const AdminDashboard: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
                     <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">إدارة الموظفين</h3>
-                    <p className="mt-2 text-gray-500 dark:text-gray-400">إضافة وتعديل بيانات الموظفين وتحديد الأدوار والمدراء.</p>
-                    <button className="mt-4 px-4 py-2 text-sm bg-indigo-100 text-indigo-800 rounded-md hover:bg-indigo-200">
+                    <p className="mt-2 text-gray-500 dark:text-gray-400">إضافة وتعديل بيانات الموظفين، تحديد الأدوار، تعيين المدراء، وتعديل الأرصدة.</p>
+                    <Link to="/admin/users" className="mt-4 inline-block px-4 py-2 text-sm bg-indigo-100 text-indigo-800 rounded-md hover:bg-indigo-200">
                         الانتقال إلى إدارة الموظفين
-                    </button>
+                    </Link>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
                     <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">إدارة الخدمات</h3>

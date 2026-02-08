@@ -16,6 +16,13 @@ export const getEmployeeData = async (uid: string): Promise<Employee> => {
     throw new Error("لم يتم العثور على بيانات الموظف!");
 };
 
+export const getAllEmployees = async (): Promise<Employee[]> => {
+    const employeesCol = collection(db, 'employees');
+    const q = query(employeesCol, orderBy('name'));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({ uid: doc.id, ...(doc.data() as Record<string, any>) } as Employee));
+};
+
 export const getServices = async (): Promise<ServiceDefinition[]> => {
     const servicesCol = collection(db, 'services');
     const servicesSnapshot = await getDocs(servicesCol);
@@ -61,10 +68,8 @@ export const getRequestDetails = async (requestId: string): Promise<Request> => 
 
 // حساب ساعات الإذن المستخدمة خلال الشهر
 export const getMonthlyPermissionUsage = async (employeeId: string, month: number, year: number): Promise<number> => {
-    // Note: Firestore querying by specific date parts usually requires storing month/year as fields or filtering client-side.
-    // For simplicity, we fetch recent requests and filter.
     const requestsCol = collection(db, 'requests');
-    // We only care about Approved permissions or Pending ones (to prevent double booking if desired, but typically Approved)
+    // We only care about Approved permissions or Pending ones
     const q = query(
         requestsCol, 
         where("employeeId", "==", employeeId),
@@ -79,10 +84,7 @@ export const getMonthlyPermissionUsage = async (employeeId: string, month: numbe
         const data = doc.data();
         const reqDate = new Date(data.payload.date);
         
-        // Filter by Month/Year
         if (reqDate.getMonth() === month && reqDate.getFullYear() === year) {
-            // duration is expected to be in minutes or converted to hours
-            // Assuming payload.duration is in minutes for precision
             totalMinutes += Number(data.payload.durationMinutes || 0);
         }
     });
@@ -91,7 +93,6 @@ export const getMonthlyPermissionUsage = async (employeeId: string, month: numbe
 };
 
 export const getSubordinatesRequests = async (managerId: string): Promise<Request[]> => {
-    // 1. Get employees reporting to this manager
     const employeesCol = collection(db, 'employees');
     const empQuery = query(employeesCol, where("reportsTo", "==", managerId));
     const empSnap = await getDocs(empQuery);
@@ -99,12 +100,10 @@ export const getSubordinatesRequests = async (managerId: string): Promise<Reques
 
     if (subordinateIds.length === 0) return [];
 
-    // 2. Get requests for these employees (Approved ones for stats)
-    // Firestore "in" query supports up to 10 items. For real apps, batch or paginate.
     const requestsCol = collection(db, 'requests');
     const q = query(
         requestsCol,
-        where("employeeId", "in", subordinateIds.slice(0, 10)), // Limit for demo
+        where("employeeId", "in", subordinateIds.slice(0, 10)), 
         where("serviceId", "==", "permission_request"),
         orderBy("createdAt", "desc")
     );
@@ -114,6 +113,30 @@ export const getSubordinatesRequests = async (managerId: string): Promise<Reques
 };
 
 // --- محرك سير العمل وعمليات الكتابة (Workflow Engine & Write Operations) ---
+
+// تحديث بيانات الموظف (إدارياً)
+export const updateEmployeeAdminData = async (uid: string, data: Partial<Employee>): Promise<void> => {
+    const employeeRef = doc(db, 'employees', uid);
+    await updateDoc(employeeRef, data);
+};
+
+// تحديث التفويض (للموظف نفسه)
+export const updateEmployeeDelegation = async (uid: string, delegation: { uid: string, name: string, until: string } | null): Promise<void> => {
+    const employeeRef = doc(db, 'employees', uid);
+    // Convert string date to Timestamp if delegation exists
+    let dataToUpdate = null;
+    if (delegation) {
+        dataToUpdate = {
+            uid: delegation.uid,
+            name: delegation.name,
+            until: Timestamp.fromDate(new Date(delegation.until))
+        };
+    }
+    
+    await updateDoc(employeeRef, {
+        delegation: dataToUpdate
+    });
+};
 
 export const updateEmployeeRole = async (uid: string, newRole: SystemRole): Promise<void> => {
     const employeeRef = doc(db, 'employees', uid);
@@ -152,7 +175,6 @@ const getNextAssignee = async (employeeId: string, service: ServiceDefinition, c
         const assigneeData = await getEmployeeData(assigneeUid);
         if (assigneeData.delegation && assigneeData.delegation.uid) {
             const now = Timestamp.now();
-            // Check if delegation is still valid
             if (assigneeData.delegation.until.toMillis() > now.toMillis()) {
                 console.log(`Task delegated from ${assigneeData.name} to ${assigneeData.delegation.name}`);
                 return assigneeData.delegation.uid;
@@ -171,7 +193,7 @@ export const createRequest = async (employeeId: string, employeeName: string, se
 
     if (isDraft) {
         status = RequestStatus.DRAFT;
-        initialAssignee = employeeId; // Assign back to creator
+        initialAssignee = employeeId; 
         actionLog = 'حفظ كمسودة';
     } else {
         const next = await getNextAssignee(employeeId, service, -1);
@@ -225,7 +247,7 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
 
         if (action === 'SUBMIT') { // From Draft to Pending
              newHistoryEntry.action = 'تقديم الطلب';
-             const nextAssignee = await getNextAssignee(request.employeeId, service, -1); // Start from beginning
+             const nextAssignee = await getNextAssignee(request.employeeId, service, -1); 
              if (!nextAssignee) throw new Error("خطأ في تحديد المسار");
              updateData.status = RequestStatus.PENDING;
              updateData.assignedTo = nextAssignee;
@@ -234,11 +256,11 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
         } else if (action === 'REJECT') {
             newHistoryEntry.action = 'رفض الطلب';
             updateData.status = RequestStatus.REJECTED;
-            updateData.assignedTo = ''; // لا يوجد مسؤول بعد الرفض
+            updateData.assignedTo = ''; 
         } else if (action === 'RETURN') {
             newHistoryEntry.action = 'طلب تعديل';
             updateData.status = RequestStatus.RETURNED;
-            updateData.assignedTo = request.employeeId; // إعادة للموظف للتعديل
+            updateData.assignedTo = request.employeeId; 
         } else if (action === 'APPROVE') {
             newHistoryEntry.action = 'موافقة على الطلب';
             const nextAssignee = await getNextAssignee(request.employeeId, service, request.currentStepIndex);
@@ -247,7 +269,6 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
                 updateData.assignedTo = nextAssignee;
                 updateData.currentStepIndex = request.currentStepIndex + 1;
             } else {
-                // الموافقة النهائية
                 updateData.status = RequestStatus.APPROVED;
                 updateData.assignedTo = '';
             }
@@ -258,19 +279,13 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
     });
 };
 
-// --- أدوات النظام (System Utils) ---
-
 export const seedInitialServices = async (): Promise<void> => {
     const servicesCol = collection(db, 'services');
     
-    // Check if permission request exists specifically
     const q = query(servicesCol, where("title", "==", 'طلب إذن'));
     const snap = await getDocs(q);
-    if (!snap.empty) return; // Already seeded
+    if (!snap.empty) return; 
 
-    // Explicitly defining the Permission Request with a fixed ID pattern if possible (auto-gen in firestore, but we search by title/logic)
-    // We will use 'permission_request' logic in the frontend code
-    
     const permissionService = {
         title: 'طلب إذن',
         icon: '⏱️',
@@ -286,14 +301,7 @@ export const seedInitialServices = async (): Promise<void> => {
         ]
     };
     
-    // We add it to collection with a specific ID if we want to enforce logic, 
-    // but Firestore addDoc generates ID. We'll use setDoc if we want fixed ID, 
-    // or just query by title in UI or add a 'type' field to service def.
-    // For now, we rely on the specific ID 'permission_request' logic in code, 
-    // so let's use setDoc equivalent or just add and ensure we handle it.
-    // To keep it simple with existing code:
-    
-    const docRef = doc(db, 'services', 'permission_request'); // Fixed ID for logic binding
+    const docRef = doc(db, 'services', 'permission_request'); 
     await runTransaction(db, async (t) => {
         t.set(docRef, permissionService);
     });

@@ -6,7 +6,7 @@ import { getFirestore } from 'firebase/firestore';
 const env = (import.meta as any).env;
 
 // استخدام import.meta.env مباشرة للسماح لـ Vite باستبدال القيم
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: env.VITE_FIREBASE_API_KEY,
   authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: env.VITE_FIREBASE_PROJECT_ID,

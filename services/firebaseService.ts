@@ -1,7 +1,9 @@
-import { db } from './firebaseConfig';
+import { db, firebaseConfig } from './firebaseConfig';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { 
     doc, getDoc, collection, query, where, getDocs, orderBy, addDoc, 
-    serverTimestamp, Timestamp, runTransaction, updateDoc 
+    serverTimestamp, Timestamp, runTransaction, updateDoc, setDoc 
 } from 'firebase/firestore';
 import { Employee, ServiceDefinition, Request, RequestStatus, ApprovalStepType, FieldType, SystemRole } from '../types';
 
@@ -66,10 +68,8 @@ export const getRequestDetails = async (requestId: string): Promise<Request> => 
     throw new Error("الطلب غير موجود!");
 };
 
-// حساب ساعات الإذن المستخدمة خلال الشهر
 export const getMonthlyPermissionUsage = async (employeeId: string, month: number, year: number): Promise<number> => {
     const requestsCol = collection(db, 'requests');
-    // We only care about Approved permissions or Pending ones
     const q = query(
         requestsCol, 
         where("employeeId", "==", employeeId),
@@ -89,7 +89,7 @@ export const getMonthlyPermissionUsage = async (employeeId: string, month: numbe
         }
     });
 
-    return totalMinutes / 60; // Return in Hours
+    return totalMinutes / 60; 
 };
 
 export const getSubordinatesRequests = async (managerId: string): Promise<Request[]> => {
@@ -114,16 +114,53 @@ export const getSubordinatesRequests = async (managerId: string): Promise<Reques
 
 // --- محرك سير العمل وعمليات الكتابة (Workflow Engine & Write Operations) ---
 
-// تحديث بيانات الموظف (إدارياً)
+// ** NEW: Register New Employee (Auth + Firestore) **
+export const registerNewEmployee = async (data: any): Promise<void> => {
+    // 1. Create a secondary Firebase App instance to create user without logging out the admin
+    const tempApp = initializeApp(firebaseConfig, "secondaryApp");
+    const tempAuth = getAuth(tempApp);
+
+    try {
+        // 2. Create User in Firebase Auth
+        const userCredential = await createUserWithEmailAndPassword(tempAuth, data.email, data.password);
+        const uid = userCredential.user.uid;
+
+        // 3. Create User Document in Firestore (using the main db instance)
+        const employeeData: Omit<Employee, 'uid'> = {
+            name: data.name,
+            email: data.email,
+            department: data.department,
+            jobTitle: data.jobTitle,
+            reportsTo: data.reportsTo || null,
+            systemRole: data.systemRole || SystemRole.EMPLOYEE,
+            balances: {
+                annual: Number(data.balances.annual) || 0,
+                sick: Number(data.balances.sick) || 0,
+                casual: Number(data.balances.casual) || 0,
+                permissionsUsed: 0
+            },
+            delegation: null
+        };
+
+        await setDoc(doc(db, 'employees', uid), employeeData);
+
+        // 4. Cleanup secondary app
+        await signOut(tempAuth);
+    } catch (error: any) {
+        console.error("Error creating user:", error);
+        throw error; // Re-throw to be handled by UI
+    } finally {
+        await deleteApp(tempApp); // Completely remove the temp app instance
+    }
+};
+
 export const updateEmployeeAdminData = async (uid: string, data: Partial<Employee>): Promise<void> => {
     const employeeRef = doc(db, 'employees', uid);
     await updateDoc(employeeRef, data);
 };
 
-// تحديث التفويض (للموظف نفسه)
 export const updateEmployeeDelegation = async (uid: string, delegation: { uid: string, name: string, until: string } | null): Promise<void> => {
     const employeeRef = doc(db, 'employees', uid);
-    // Convert string date to Timestamp if delegation exists
     let dataToUpdate = null;
     if (delegation) {
         dataToUpdate = {
@@ -132,7 +169,6 @@ export const updateEmployeeDelegation = async (uid: string, delegation: { uid: s
             until: Timestamp.fromDate(new Date(delegation.until))
         };
     }
-    
     await updateDoc(employeeRef, {
         delegation: dataToUpdate
     });
@@ -170,7 +206,6 @@ const getNextAssignee = async (employeeId: string, service: ServiceDefinition, c
         assigneeUid = querySnapshot.docs[0].id;
     }
 
-    // --- منطق التفويض (Delegation Logic) ---
     if (assigneeUid) {
         const assigneeData = await getEmployeeData(assigneeUid);
         if (assigneeData.delegation && assigneeData.delegation.uid) {
@@ -245,7 +280,7 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
         
         let updateData: Partial<Request> = {};
 
-        if (action === 'SUBMIT') { // From Draft to Pending
+        if (action === 'SUBMIT') { 
              newHistoryEntry.action = 'تقديم الطلب';
              const nextAssignee = await getNextAssignee(request.employeeId, service, -1); 
              if (!nextAssignee) throw new Error("خطأ في تحديد المسار");

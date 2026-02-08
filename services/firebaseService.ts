@@ -7,6 +7,22 @@ import {
 } from 'firebase/firestore';
 import { Employee, ServiceDefinition, Request, RequestStatus, ApprovalStepType, FieldType, SystemRole } from '../types';
 
+// --- الثوابت (Hardcoded Services) ---
+
+export const PERMISSION_SERVICE_DEF: ServiceDefinition = {
+    id: 'permission_request',
+    title: 'طلب إذن',
+    icon: '⏱️',
+    color: 'indigo-500',
+    fields: [
+        { id: 'date', label: 'تاريخ الإذن', type: FieldType.DATE, required: true },
+        { id: 'reason', label: 'سبب الإذن', type: FieldType.TEXTAREA, required: true }
+    ],
+    approvalSteps: [
+        { order: 1, type: ApprovalStepType.REPORTS_TO, roleValue: null }
+    ]
+};
+
 // --- عمليات القراءة (Read Operations) ---
 
 export const getEmployeeData = async (uid: string): Promise<Employee> => {
@@ -25,19 +41,17 @@ export const getAllEmployees = async (): Promise<Employee[]> => {
     return querySnapshot.docs.map(doc => ({ uid: doc.id, ...(doc.data() as Record<string, any>) } as Employee));
 };
 
+// تم تعديل الدالة لترجع القائمة الثابتة بدلاً من قاعدة البيانات
 export const getServices = async (): Promise<ServiceDefinition[]> => {
-    const servicesCol = collection(db, 'services');
-    const servicesSnapshot = await getDocs(servicesCol);
-    return servicesSnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) } as ServiceDefinition));
+    return [PERMISSION_SERVICE_DEF];
 };
 
+// تم تعديل الدالة لترجع تعريف الخدمة الثابت
 export const getServiceDefinition = async (serviceId: string): Promise<ServiceDefinition> => {
-    const docRef = doc(db, 'services', serviceId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        return { id: docSnap.id, ...(docSnap.data() as Record<string, any>) } as ServiceDefinition;
+    if (serviceId === 'permission_request') {
+        return PERMISSION_SERVICE_DEF;
     }
-    throw new Error("لم يتم العثور على تعريف الخدمة!");
+    throw new Error("الخدمة غير موجودة أو لم يتم تفعيلها بعد.");
 };
 
 export const getEmployeeRequests = async (employeeId: string): Promise<Request[]> => {
@@ -82,7 +96,8 @@ export const getMonthlyPermissionUsage = async (employeeId: string, month: numbe
 
     snapshot.docs.forEach(doc => {
         const data = doc.data();
-        const reqDate = new Date(data.payload.date);
+        // Check both date formats (string YYYY-MM-DD or Timestamp)
+        let reqDate = new Date(data.payload.date);
         
         if (reqDate.getMonth() === month && reqDate.getFullYear() === year) {
             totalMinutes += Number(data.payload.durationMinutes || 0);
@@ -114,18 +129,14 @@ export const getSubordinatesRequests = async (managerId: string): Promise<Reques
 
 // --- محرك سير العمل وعمليات الكتابة (Workflow Engine & Write Operations) ---
 
-// ** NEW: Register New Employee (Auth + Firestore) **
 export const registerNewEmployee = async (data: any): Promise<void> => {
-    // 1. Create a secondary Firebase App instance to create user without logging out the admin
     const tempApp = initializeApp(firebaseConfig, "secondaryApp");
     const tempAuth = getAuth(tempApp);
 
     try {
-        // 2. Create User in Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(tempAuth, data.email, data.password);
         const uid = userCredential.user.uid;
 
-        // 3. Create User Document in Firestore (using the main db instance)
         const employeeData: Omit<Employee, 'uid'> = {
             name: data.name,
             email: data.email,
@@ -143,14 +154,12 @@ export const registerNewEmployee = async (data: any): Promise<void> => {
         };
 
         await setDoc(doc(db, 'employees', uid), employeeData);
-
-        // 4. Cleanup secondary app
         await signOut(tempAuth);
     } catch (error: any) {
         console.error("Error creating user:", error);
-        throw error; // Re-throw to be handled by UI
+        throw error; 
     } finally {
-        await deleteApp(tempApp); // Completely remove the temp app instance
+        await deleteApp(tempApp);
     }
 };
 
@@ -181,14 +190,9 @@ export const updateEmployeeRole = async (uid: string, newRole: SystemRole): Prom
     });
 };
 
-export const addService = async (service: Omit<ServiceDefinition, 'id'>): Promise<void> => {
-    const servicesCol = collection(db, 'services');
-    await addDoc(servicesCol, service);
-};
-
 const getNextAssignee = async (employeeId: string, service: ServiceDefinition, currentStepIndex: number): Promise<string | null> => {
     if (currentStepIndex + 1 >= service.approvalSteps.length) {
-        return null; // تمت جميع الموافقات
+        return null; 
     }
 
     const nextStep = service.approvalSteps[currentStepIndex + 1];
@@ -268,6 +272,7 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
         if (!requestSnap.exists()) throw new Error("الطلب غير موجود");
     
         const request = requestSnap.data() as Request;
+        // Fetch definition from hardcoded constant logic
         const service = await getServiceDefinition(request.serviceId);
         
         const newHistoryEntry = {
@@ -312,34 +317,4 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
         const updatedHistory = [...request.history, newHistoryEntry];
         transaction.update(requestRef, { ...updateData, history: updatedHistory });
     });
-};
-
-export const seedInitialServices = async (): Promise<void> => {
-    const servicesCol = collection(db, 'services');
-    
-    const q = query(servicesCol, where("title", "==", 'طلب إذن'));
-    const snap = await getDocs(q);
-    if (!snap.empty) return; 
-
-    const permissionService = {
-        title: 'طلب إذن',
-        icon: '⏱️',
-        color: 'indigo-500',
-        fields: [
-            { id: 'date', label: 'تاريخ الإذن', type: FieldType.DATE, required: true },
-            { id: 'startTime', label: 'وقت البداية', type: FieldType.TIME, required: true },
-            { id: 'endTime', label: 'وقت النهاية', type: FieldType.TIME, required: true },
-            { id: 'reason', label: 'سبب الإذن', type: FieldType.TEXTAREA, required: true }
-        ],
-        approvalSteps: [
-            { order: 1, type: ApprovalStepType.REPORTS_TO, roleValue: null }
-        ]
-    };
-    
-    const docRef = doc(db, 'services', 'permission_request'); 
-    await runTransaction(db, async (t) => {
-        t.set(docRef, permissionService);
-    });
-
-    console.log("Seeded Permission Service");
 };

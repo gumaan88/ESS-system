@@ -22,16 +22,16 @@ const ElegantSlider: React.FC<SliderProps> = ({ label, value, min, max, onChange
     const percentage = ((value - min) / (max - min)) * 100;
 
     return (
-        <div className="w-full mb-6 relative">
+        <div className="w-full mb-6 relative px-2">
             <div className="flex justify-between mb-2">
-                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</span>
+                <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</span>
             </div>
             
-            <div className="relative w-full h-10 flex items-center">
+            <div className="relative w-full h-10 flex items-center group">
                 {/* Track Background */}
-                <div className="absolute w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div className="absolute w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
                     <div 
-                        className="h-full bg-indigo-500 transition-all duration-75 ease-out" 
+                        className="h-full bg-gradient-to-l from-indigo-500 to-purple-600 transition-all duration-150 ease-out" 
                         style={{ width: `${percentage}%` }}
                     />
                 </div>
@@ -43,24 +43,21 @@ const ElegantSlider: React.FC<SliderProps> = ({ label, value, min, max, onChange
                     max={max} 
                     value={value} 
                     onChange={(e) => onChange(Number(e.target.value))}
-                    className="absolute w-full h-full opacity-0 cursor-pointer z-10"
+                    className="absolute w-full h-full opacity-0 cursor-pointer z-20"
                 />
 
                 {/* Custom Thumb & Floating Value Bubble */}
                 <div 
-                    className="absolute h-8 w-8 bg-white dark:bg-gray-800 border-2 border-indigo-500 rounded-full shadow-lg flex items-center justify-center pointer-events-none transition-all duration-75 ease-out z-0"
+                    className="absolute h-8 w-8 bg-white dark:bg-gray-800 border-4 border-indigo-500 rounded-full shadow-xl flex items-center justify-center pointer-events-none transition-all duration-75 ease-out z-10"
                     style={{ 
-                        left: `calc(${percentage}% - 16px)` // Center the 32px thumb
+                        left: `calc(${percentage}% - 16px)` 
                     }}
                 >
                     {/* The Value Tooltip above thumb */}
-                    <div className="absolute -top-10 bg-indigo-600 text-white text-xs font-bold py-1 px-2 rounded transform -translate-x-0 shadow-sm whitespace-nowrap">
+                    <div className="absolute -top-12 bg-gray-900 text-white text-sm font-bold py-1 px-3 rounded-lg transform -translate-x-0 shadow-lg whitespace-nowrap transition-transform scale-100 origin-bottom">
                         {formatValue ? formatValue(value) : value}
-                        <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-indigo-600 rotate-45"></div>
+                        <div className="absolute -bottom-1.5 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-gray-900 rotate-45"></div>
                     </div>
-                    
-                    {/* Inner Dot */}
-                    <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
                 </div>
             </div>
         </div>
@@ -118,7 +115,11 @@ const RequestForm: React.FC = () => {
     const [endHour, setEndHour] = useState(10);
     const [endMinute, setEndMinute] = useState(0);
 
-    const isPermissionService = serviceId === 'permission_request';
+    // Logic to detect if this is a Permission Request (either by ID or Title)
+    const isPermissionService = useMemo(() => {
+        if (!service) return false;
+        return service.id === 'permission_request' || service.title === 'طلب إذن' || service.title.includes('إذن');
+    }, [service]);
 
     useEffect(() => {
         if (!serviceId) return;
@@ -128,7 +129,8 @@ const RequestForm: React.FC = () => {
                 const serviceDef = await getServiceDefinition(serviceId);
                 setService(serviceDef);
                 
-                if (serviceDef.id === 'permission_request' && user) {
+                // If it is permission service, fetch usage
+                if ((serviceDef.id === 'permission_request' || serviceDef.title === 'طلب إذن') && user) {
                     const now = new Date();
                     const used = await getMonthlyPermissionUsage(user.uid, now.getMonth(), now.getFullYear());
                     setPermissionUsage(used);
@@ -171,7 +173,7 @@ const RequestForm: React.FC = () => {
     const validatePermissionLogic = (data: Record<string, any>): { valid: boolean; error?: string; calculatedType?: string; durationMinutes?: number } => {
         if (!isPermissionService) return { valid: true };
 
-        const { startTime, endTime, date } = data;
+        const { date } = data;
         if (!date) return { valid: false, error: "يرجى تحديد التاريخ." };
 
         const startTotalMinutes = startHour * 60 + startMinute;
@@ -276,10 +278,10 @@ const RequestForm: React.FC = () => {
             
             <form onSubmit={(e) => handleSubmit(e, false)} className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-md space-y-6">
                 
-                {/* 1. Generic Fields (Except Time for Permission Request) */}
+                {/* 1. Generic Fields (Hide Time Inputs for Permissions) */}
                 {service.fields.map(field => {
-                    // Hide generic time inputs for permission service to use Custom UI
-                    if (isPermissionService && (field.id === 'startTime' || field.id === 'endTime')) return null;
+                    // Force Hide standard time inputs for permission service to use Custom UI
+                    if (isPermissionService && (field.id === 'startTime' || field.id === 'endTime' || field.type === FieldType.TIME)) return null;
                     
                     return (
                         <div key={field.id}>
@@ -291,74 +293,81 @@ const RequestForm: React.FC = () => {
 
                 {/* 2. Custom Elegant Slider UI for Permissions */}
                 {isPermissionService && (
-                    <div className="mt-8 p-6 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-700">
-                        <div className="flex items-center justify-between mb-6">
+                    <div className="mt-8 p-6 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-gray-800 dark:to-gray-900 rounded-3xl border border-indigo-100 dark:border-gray-700 shadow-sm">
+                        <div className="flex items-center justify-between mb-8">
                             <h3 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                                <span>⏱️</span> تحديد الوقت
+                                <span className="bg-white dark:bg-gray-700 p-2 rounded-lg shadow-sm">⏱️</span> تحديد مدة الإذن
                             </h3>
-                            <div className="text-right">
+                            <div className="text-right bg-white dark:bg-gray-800 px-4 py-2 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
                                 <span className="text-xs text-gray-500 block">المدة المحتسبة</span>
-                                <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
-                                    {Math.floor(currentDuration / 60)} <span className="text-xs">ساعة</span> و {currentDuration % 60} <span className="text-xs">دقيقة</span>
+                                <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight">
+                                    {Math.floor(currentDuration / 60)}<span className="text-sm font-normal text-gray-400 mx-1">س</span> 
+                                    {currentDuration % 60}<span className="text-sm font-normal text-gray-400 mx-1">د</span>
                                 </span>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
                             {/* FROM Section */}
-                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
-                                <div className="flex items-center gap-2 mb-4 border-b pb-2 dark:border-gray-700">
-                                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                    <span className="font-bold text-gray-700 dark:text-gray-200">من الساعة</span>
-                                    <span className="mr-auto font-mono text-lg bg-green-100 text-green-800 px-2 rounded dark:bg-green-900 dark:text-green-300">
+                            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg border-t-4 border-green-500 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-20 h-20 bg-green-50 dark:bg-green-900/20 rounded-bl-full -mr-10 -mt-10"></div>
+                                <div className="flex items-center gap-3 mb-6 border-b border-gray-100 dark:border-gray-700 pb-4 relative z-10">
+                                    <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center text-green-600 font-bold text-xs">من</div>
+                                    <span className="font-bold text-gray-700 dark:text-gray-200 text-lg">وقت البداية</span>
+                                    <span className="mr-auto font-mono text-2xl font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-lg">
                                         {pad(startHour)}:{pad(startMinute)}
                                     </span>
                                 </div>
-                                <ElegantSlider 
-                                    label="الساعة" 
-                                    min={0} max={23} 
-                                    value={startHour} 
-                                    onChange={setStartHour} 
-                                    formatValue={(v) => pad(v)}
-                                />
-                                <ElegantSlider 
-                                    label="الدقيقة" 
-                                    min={0} max={59} 
-                                    value={startMinute} 
-                                    onChange={setStartMinute}
-                                    formatValue={(v) => pad(v)} 
-                                />
+                                <div className="space-y-6 relative z-10">
+                                    <ElegantSlider 
+                                        label="الساعة" 
+                                        min={0} max={23} 
+                                        value={startHour} 
+                                        onChange={setStartHour} 
+                                        formatValue={(v) => pad(v)}
+                                    />
+                                    <ElegantSlider 
+                                        label="الدقيقة" 
+                                        min={0} max={59} 
+                                        value={startMinute} 
+                                        onChange={setStartMinute}
+                                        formatValue={(v) => pad(v)} 
+                                    />
+                                </div>
                             </div>
 
                             {/* TO Section */}
-                            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
-                                <div className="flex items-center gap-2 mb-4 border-b pb-2 dark:border-gray-700">
-                                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                                    <span className="font-bold text-gray-700 dark:text-gray-200">إلى الساعة</span>
-                                    <span className="mr-auto font-mono text-lg bg-red-100 text-red-800 px-2 rounded dark:bg-red-900 dark:text-red-300">
+                            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg border-t-4 border-red-500 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-bl-full -mr-10 -mt-10"></div>
+                                <div className="flex items-center gap-3 mb-6 border-b border-gray-100 dark:border-gray-700 pb-4 relative z-10">
+                                    <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center text-red-600 font-bold text-xs">إلى</div>
+                                    <span className="font-bold text-gray-700 dark:text-gray-200 text-lg">وقت النهاية</span>
+                                    <span className="mr-auto font-mono text-2xl font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-lg">
                                         {pad(endHour)}:{pad(endMinute)}
                                     </span>
                                 </div>
-                                <ElegantSlider 
-                                    label="الساعة" 
-                                    min={0} max={23} 
-                                    value={endHour} 
-                                    onChange={setEndHour}
-                                    formatValue={(v) => pad(v)}
-                                />
-                                <ElegantSlider 
-                                    label="الدقيقة" 
-                                    min={0} max={59} 
-                                    value={endMinute} 
-                                    onChange={setEndMinute}
-                                    formatValue={(v) => pad(v)}
-                                />
+                                <div className="space-y-6 relative z-10">
+                                    <ElegantSlider 
+                                        label="الساعة" 
+                                        min={0} max={23} 
+                                        value={endHour} 
+                                        onChange={setEndHour}
+                                        formatValue={(v) => pad(v)}
+                                    />
+                                    <ElegantSlider 
+                                        label="الدقيقة" 
+                                        min={0} max={59} 
+                                        value={endMinute} 
+                                        onChange={setEndMinute}
+                                        formatValue={(v) => pad(v)}
+                                    />
+                                </div>
                             </div>
                         </div>
 
-                         <div className="mt-4 flex justify-center">
-                            <span className={`px-4 py-1 rounded-full text-sm font-semibold ${startHour === 8 && startMinute === 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
-                                تصنيف الإذن: {startHour === 8 && startMinute === 0 ? "تأخر عن العمل" : "خروج أثناء الدوام"}
+                         <div className="mt-8 flex justify-center">
+                            <span className={`px-6 py-2 rounded-full text-base font-bold shadow-sm transition-colors ${startHour === 8 && startMinute === 0 ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' : 'bg-indigo-100 text-indigo-800 border border-indigo-200'}`}>
+                                🏷️ تصنيف الإذن: {startHour === 8 && startMinute === 0 ? "تأخر عن العمل" : "خروج أثناء الدوام"}
                             </span>
                         </div>
                     </div>

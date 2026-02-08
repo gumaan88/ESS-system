@@ -38,12 +38,14 @@ const UserManagement: React.FC = () => {
             const data = await getAllEmployees();
             setEmployees(data);
         } catch (err: any) {
-            console.error(err);
-            // Handle permission errors specifically
+            console.error("Failed to fetch employees:", err);
+            // Enhanced error handling for permissions
             if (err.code === 'permission-denied') {
-                setError('ليس لديك صلاحيات لعرض قائمة الموظفين. تأكد من أنك تمتلك صلاحية HR_ADMIN.');
+                setError('عذراً، تم رفض الوصول لقاعدة البيانات. (Permission Denied). يرجى التأكد من "Firestore Security Rules" في لوحة تحكم Firebase للسماح بالقراءة للمدراء.');
+            } else if (err.code === 'failed-precondition') {
+                 setError('الاستعلام يتطلب فهرس (Index) في Firestore. راجع "Console Log" للحصول على رابط إنشاء الفهرس.');
             } else {
-                setError('فشل تحميل بيانات الموظفين.');
+                setError(`فشل تحميل بيانات الموظفين: ${err.message || 'خطأ غير معروف'}`);
             }
         } finally {
             setLoading(false);
@@ -93,7 +95,7 @@ const UserManagement: React.FC = () => {
              if (err.code === 'auth/email-already-in-use') {
                 setError('البريد الإلكتروني مستخدم بالفعل.');
              } else {
-                setError('فشل إضافة الموظف. تأكد من الاتصال بالإنترنت وصلاحياتك.');
+                setError(`فشل إضافة الموظف: ${err.message}`);
              }
         } finally {
             setLoading(false);
@@ -137,7 +139,15 @@ const UserManagement: React.FC = () => {
                     <span className="text-xl font-bold ml-2">+</span> إضافة موظف
                 </button>
             </div>
+            
+            {employees.length === 0 && !loading && error && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 text-center">
+                    <h3 className="text-red-800 dark:text-red-200 font-bold mb-2">تعذر الوصول للبيانات</h3>
+                    <p className="text-red-600 dark:text-red-300 text-sm">{error}</p>
+                </div>
+            )}
 
+            {employees.length > 0 && (
             <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -188,6 +198,7 @@ const UserManagement: React.FC = () => {
                     </table>
                 </div>
             </div>
+            )}
 
             {/* ADD NEW EMPLOYEE MODAL */}
             {showAddModal && (

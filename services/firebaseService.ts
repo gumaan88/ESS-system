@@ -219,13 +219,16 @@ const getNextAssignee = async (employeeId: string, service: ServiceDefinition, c
 
     if (nextStep.type === ApprovalStepType.REPORTS_TO) {
         const employee = await getEmployeeData(employeeId);
-        if (!employee.reportsTo) throw new Error("لا يوجد مدير مباشر معين لهذا الموظف.");
+        // CRITICAL FIX: Throw clear error if no manager assigned
+        if (!employee.reportsTo) {
+            throw new Error("عذراً، لا يمكن تقديم الطلب لأنه لم يتم تعيين مدير مباشر لك في النظام. يرجى مراجعة إدارة الموارد البشرية.");
+        }
         assigneeUid = employee.reportsTo;
     } else if (nextStep.type === ApprovalStepType.SYSTEM_ROLE) {
         const employeesCol = collection(db, 'employees');
         const q = query(employeesCol, where("systemRole", "==", nextStep.roleValue));
         const querySnapshot = await getDocs(q);
-        if (querySnapshot.empty) throw new Error(`لم يتم العثور على موظف بالدور الوظيفي: ${nextStep.roleValue}`);
+        if (querySnapshot.empty) throw new Error(`لم يتم العثور على موظف بالدور الوظيفي المطلوب للموافقة: ${nextStep.roleValue}`);
         assigneeUid = querySnapshot.docs[0].id;
     }
 
@@ -255,7 +258,10 @@ export const createRequest = async (employeeId: string, employeeName: string, se
         actionLog = 'حفظ كمسودة';
     } else {
         const next = await getNextAssignee(employeeId, service, -1);
-        if (!next) throw new Error("تعذر تحديد المسؤول عن الموافقة الأولى.");
+        if (!next) {
+            // Should be caught by error handling in UI, but just in case
+            throw new Error("تعذر تحديد المسؤول عن الموافقة الأولى.");
+        }
         initialAssignee = next;
     }
 

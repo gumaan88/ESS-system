@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -88,15 +87,26 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
               <li className={`px-3 py-2 rounded-sm mb-0.5 last:mb-0 ${pathname === '/dashboard' && 'bg-gray-900'}`}>
                 <NavLink end to="/dashboard" className="block text-gray-200 hover:text-white truncate transition duration-150">
                   <div className="flex items-center">
-                    {/* Icon and text */}
+                    <span className="text-xl">🏠</span>
                     <span className="text-sm font-medium ms-3 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">لوحة التحكم</span>
                   </div>
                 </NavLink>
               </li>
+              
+              <li className={`px-3 py-2 rounded-sm mb-0.5 last:mb-0 ${pathname === '/my-requests' && 'bg-gray-900'}`}>
+                <NavLink end to="/my-requests" className="block text-gray-200 hover:text-white truncate transition duration-150">
+                  <div className="flex items-center">
+                    <span className="text-xl">📂</span>
+                    <span className="text-sm font-medium ms-3 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">طلباتي</span>
+                  </div>
+                </NavLink>
+              </li>
+
               {isManagerOrAdmin && (
                  <li className={`px-3 py-2 rounded-sm mb-0.5 last:mb-0 ${pathname.includes('inbox') && 'bg-gray-900'}`}>
                     <NavLink end to="/inbox" className="block text-gray-200 hover:text-white truncate transition duration-150">
                     <div className="flex items-center">
+                         <span className="text-xl">📥</span>
                         <span className="text-sm font-medium ms-3 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">صندوق الوارد</span>
                     </div>
                     </NavLink>
@@ -106,6 +116,7 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
                  <li className={`px-3 py-2 rounded-sm mb-0.5 last:mb-0 ${pathname.includes('admin') && 'bg-gray-900'}`}>
                     <NavLink end to="/admin" className="block text-gray-200 hover:text-white truncate transition duration-150">
                     <div className="flex items-center">
+                        <span className="text-xl">⚙️</span>
                         <span className="text-sm font-medium ms-3 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">لوحة الإدارة</span>
                     </div>
                     </NavLink>

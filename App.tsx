@@ -7,6 +7,7 @@ import Spinner from './components/Spinner';
 // Lazy load pages for better performance
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const MyRequests = lazy(() => import('./pages/MyRequests')); // Added
 const NewRequest = lazy(() => import('./pages/NewRequest'));
 const RequestForm = lazy(() => import('./pages/RequestForm'));
 const RequestDetails = lazy(() => import('./pages/RequestDetails'));
@@ -61,6 +62,7 @@ const AppRouter: React.FC = () => {
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/dashboard" />} />
           <Route path="dashboard" element={<Dashboard />} />
+          <Route path="my-requests" element={<MyRequests />} /> 
           <Route path="profile" element={<Profile />} />
           <Route path="new-request" element={<NewRequest />} />
           <Route path="request-form/:serviceId" element={<RequestForm />} />

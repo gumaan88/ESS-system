@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getRequestDetails, getEmployeeData, processRequestAction } from '../services/firebaseService';
@@ -15,6 +14,7 @@ const RequestDetails: React.FC = () => {
     
     const [request, setRequest] = useState<Request | null>(null);
     const [requestor, setRequestor] = useState<Employee | null>(null);
+    const [assigneeName, setAssigneeName] = useState<string>(''); // For tracking who has the request
     const [loading, setLoading] = useState(true);
     const [action, setAction] = useState<'APPROVE' | 'REJECT' | 'RETURN' | null>(null);
     const [note, setNote] = useState('');
@@ -28,9 +28,20 @@ const RequestDetails: React.FC = () => {
             try {
                 const reqDetails = await getRequestDetails(requestId);
                 setRequest(reqDetails);
+                
                 if (reqDetails) {
                     const reqtorData = await getEmployeeData(reqDetails.employeeId);
                     setRequestor(reqtorData);
+
+                    // Fetch current assignee name if pending
+                    if (reqDetails.status === RequestStatus.PENDING && reqDetails.assignedTo) {
+                        try {
+                            const assignee = await getEmployeeData(reqDetails.assignedTo);
+                            setAssigneeName(assignee.name);
+                        } catch (e) {
+                            setAssigneeName('غير معروف');
+                        }
+                    }
                 }
             } catch (err) {
                 setError("لا يمكن تحميل تفاصيل الطلب.");
@@ -55,9 +66,6 @@ const RequestDetails: React.FC = () => {
             await processRequestAction(requestId, action, note, user.uid, employeeData.name);
             setAction(null);
             setNote('');
-            // Refetch data
-            const reqDetails = await getRequestDetails(requestId);
-            setRequest(reqDetails);
             navigate('/inbox');
         } catch (err) {
             setError("حدث خطأ أثناء معالجة الإجراء.");
@@ -84,14 +92,19 @@ const RequestDetails: React.FC = () => {
             <Notification message={error} type="error" onClose={() => setError('')} />
 
             <div className="bg-white dark:bg-gray-800 shadow-xl rounded-2xl p-8">
-                <div className="flex justify-between items-start mb-6">
+                <div className="flex flex-col md:flex-row justify-between items-start mb-6 border-b dark:border-gray-700 pb-4">
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{request.serviceTitle}</h1>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">مقدم من: {requestor.name} - {requestor.department}</p>
                     </div>
-                    <span className={`px-4 py-1 text-sm font-semibold rounded-full ${getStatusChipClass(request.status)}`}>
-                        {request.status}
-                    </span>
+                    <div className="mt-4 md:mt-0 text-right">
+                        <span className={`px-4 py-1 text-sm font-semibold rounded-full block text-center mb-2 ${getStatusChipClass(request.status)}`}>
+                            {request.status}
+                        </span>
+                        {request.status === RequestStatus.PENDING && assigneeName && (
+                            <p className="text-xs text-gray-500">بانتظار موافقة: <span className="font-bold text-gray-700 dark:text-gray-300">{assigneeName}</span></p>
+                        )}
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -159,4 +172,3 @@ const RequestDetails: React.FC = () => {
 };
 
 export default RequestDetails;
-

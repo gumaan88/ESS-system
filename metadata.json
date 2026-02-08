@@ -1,0 +1,5 @@
+{
+  "name": "Smart Employee Portal",
+  "description": "An integrated Employee Self-Service (ESS) system for a small organization to automate paper-based procedures into smart digital workflows, built on a cost-effective, serverless architecture.",
+  "requestFramePermissions": []
+}

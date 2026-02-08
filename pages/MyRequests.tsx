@@ -27,22 +27,36 @@ const MyRequests: React.FC = () => {
     const [requests, setRequests] = useState<Request[]>([]);
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState<string>('ALL');
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [debugInfo, setDebugInfo] = useState<string>('');
 
     useEffect(() => {
         const fetchRequests = async () => {
             if (user) {
                 setLoading(true);
+                setErrorMsg(null);
                 try {
+                    // Try fetching
                     const userRequests = await getEmployeeRequests(user.uid);
-                    // Safe Client-side sorting (Newest first)
+                    
+                    // Client-side sorting (Newest first) safely
                     userRequests.sort((a, b) => {
                         const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
                         const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
                         return timeB - timeA;
                     });
+                    
                     setRequests(userRequests);
-                } catch (error) {
+                    setDebugInfo(`تم جلب ${userRequests.length} طلب بنجاح.`);
+                } catch (error: any) {
                     console.error("Error fetching requests:", error);
+                    if (error.code === 'permission-denied') {
+                        setErrorMsg("تم رفض الوصول (Permission Denied). قواعد الأمان في Firebase تمنع قراءة البيانات. يرجى التأكد من تحديث Rules.");
+                    } else if (error.code === 'failed-precondition') {
+                        setErrorMsg("مطلوب فهرس (Index). يرجى فتح Console المتصفح والضغط على الرابط لإنشاء الفهرس.");
+                    } else {
+                        setErrorMsg(`خطأ غير معروف: ${error.message}`);
+                    }
                 } finally {
                     setLoading(false);
                 }
@@ -82,6 +96,45 @@ const MyRequests: React.FC = () => {
                     </Link>
                 </div>
             </div>
+
+            {/* --- DEBUG PANEL (Temporary for Diagnostics) --- */}
+            {user && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 p-4 rounded-lg text-xs font-mono space-y-2">
+                    <h3 className="font-bold text-yellow-800 dark:text-yellow-500 border-b border-yellow-200 pb-1 mb-2">لوحة التشخيص (Debug Panel)</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-gray-600 dark:text-gray-400">
+                        <p><strong>UID الحالي (في المتصفح):</strong> <span className="bg-white dark:bg-black px-1 select-all">{user.uid}</span></p>
+                        <p><strong>حالة التحميل:</strong> {loading ? 'جاري التحميل...' : 'منتهية'}</p>
+                        <p><strong>عدد الطلبات المجلوبة:</strong> {requests.length}</p>
+                        <p><strong>حالة العملية:</strong> {debugInfo}</p>
+                    </div>
+                </div>
+            )}
+            
+            {/* --- ERROR MESSAGE --- */}
+            {errorMsg && (
+                <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-md" role="alert">
+                    <p className="font-bold">حدث خطأ أثناء جلب البيانات</p>
+                    <p>{errorMsg}</p>
+                    {errorMsg.includes('Permission Denied') && (
+                        <div className="mt-2 text-sm bg-white p-2 rounded border border-red-200">
+                            <strong>الحل المقترح:</strong> اذهب إلى Firebase Console {'>'} Firestore Database {'>'} Rules وتأكد من أنها:
+                            <pre className="mt-1 bg-gray-100 p-1 block overflow-x-auto" dir="ltr">
+{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /requests/{request} {
+      allow read, write: if request.auth != null;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}`}
+                            </pre>
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
                 {loading ? (

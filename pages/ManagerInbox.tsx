@@ -26,6 +26,7 @@ const ManagerInbox: React.FC = () => {
     const [requests, setRequests] = useState<Request[]>([]);
     const [dashboardData, setDashboardData] = useState<Request[]>([]);
     const [loading, setLoading] = useState(true);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
     // Dashboard Filters
     const [filterEmployee, setFilterEmployee] = useState('');
@@ -37,6 +38,7 @@ const ManagerInbox: React.FC = () => {
         const fetchData = async () => {
             if (user) {
                 setLoading(true);
+                setErrorMsg(null);
                 try {
                     // Fetch Inbox
                     const assignedRequests = await getAssignedRequests(user.uid);
@@ -59,8 +61,15 @@ const ManagerInbox: React.FC = () => {
                         });
                         setDashboardData(stats);
                     }
-                } catch (error) {
+                } catch (error: any) {
                     console.error("Error fetching data:", error);
+                    if (error.code === 'permission-denied') {
+                        setErrorMsg("تم رفض الوصول. تأكد من قواعد الأمان (Firestore Rules).");
+                    } else if (error.code === 'failed-precondition') {
+                         setErrorMsg("مطلوب فهرس (Index) لهذا الاستعلام. راجع الكونسول.");
+                    } else {
+                         setErrorMsg(`خطأ: ${error.message}`);
+                    }
                 } finally {
                     setLoading(false);
                 }
@@ -130,6 +139,14 @@ const ManagerInbox: React.FC = () => {
                     </div>
                 )}
             </div>
+
+             {/* --- ERROR MESSAGE --- */}
+             {errorMsg && (
+                <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-md" role="alert">
+                    <p className="font-bold">حدث خطأ أثناء جلب البيانات</p>
+                    <p>{errorMsg}</p>
+                </div>
+            )}
             
             {activeTab === 'INBOX' && (
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">

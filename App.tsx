@@ -1,3 +1,4 @@
+
 import React, { lazy, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -65,7 +66,7 @@ const AppRouter: React.FC = () => {
           <Route path="new-request" element={<NewRequest />} />
           <Route path="request-form/:serviceId" element={<RequestForm />} />
           <Route path="request/:requestId" element={<RequestDetails />} />
-          <Route path="inbox" element={<ProtectedRoute roles={['MANAGER', 'HR_ADMIN', 'CFO', 'CEO']}><ManagerInbox /></ProtectedRoute>} />
+          <Route path="inbox" element={<ProtectedRoute roles={['HOD', 'HR_MANAGER', 'FINANCE_MANAGER', 'HR_SPECIALIST', 'HR_ADMIN', 'CFO', 'CEO']}><ManagerInbox /></ProtectedRoute>} />
           <Route path="admin" element={<ProtectedRoute roles={['HR_ADMIN']}><AdminDashboard /></ProtectedRoute>} />
           <Route path="admin/services/new" element={<ProtectedRoute roles={['HR_ADMIN']}><ServiceBuilder /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />

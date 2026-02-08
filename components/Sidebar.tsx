@@ -18,7 +18,16 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
   
   const { employeeData } = useAuth();
   
-  const isManagerOrAdmin = employeeData && [SystemRole.MANAGER, SystemRole.HR_ADMIN, SystemRole.CFO, SystemRole.CEO].includes(employeeData.systemRole);
+  const isManagerOrAdmin = employeeData && [
+    SystemRole.HOD, 
+    SystemRole.HR_MANAGER, 
+    SystemRole.FINANCE_MANAGER, 
+    SystemRole.HR_ADMIN, 
+    SystemRole.HR_SPECIALIST,
+    SystemRole.CFO, 
+    SystemRole.CEO
+  ].includes(employeeData.systemRole);
+
   const isAdmin = employeeData && employeeData.systemRole === SystemRole.HR_ADMIN;
 
   // close on click outside

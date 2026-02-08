@@ -1,7 +1,7 @@
 import { db } from './firebaseConfig';
 import { 
     doc, getDoc, collection, query, where, getDocs, orderBy, addDoc, 
-    serverTimestamp, Timestamp, runTransaction 
+    serverTimestamp, Timestamp, runTransaction, updateDoc 
 } from 'firebase/firestore';
 import { Employee, ServiceDefinition, Request, RequestStatus, ApprovalStepType, FieldType, SystemRole } from '../types';
 
@@ -60,6 +60,13 @@ export const getRequestDetails = async (requestId: string): Promise<Request> => 
 };
 
 // --- محرك سير العمل وعمليات الكتابة (Workflow Engine & Write Operations) ---
+
+export const updateEmployeeRole = async (uid: string, newRole: SystemRole): Promise<void> => {
+    const employeeRef = doc(db, 'employees', uid);
+    await updateDoc(employeeRef, {
+        systemRole: newRole
+    });
+};
 
 export const addService = async (service: Omit<ServiceDefinition, 'id'>): Promise<void> => {
     const servicesCol = collection(db, 'services');

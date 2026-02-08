@@ -13,6 +13,7 @@ const RequestDetails = lazy(() => import('./pages/RequestDetails'));
 const ManagerInbox = lazy(() => import('./pages/ManagerInbox'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const ServiceBuilder = lazy(() => import('./pages/admin/ServiceBuilder'));
+const Profile = lazy(() => import('./pages/Profile'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 interface ProtectedRouteProps {
@@ -60,6 +61,7 @@ const AppRouter: React.FC = () => {
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/dashboard" />} />
           <Route path="dashboard" element={<Dashboard />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="new-request" element={<NewRequest />} />
           <Route path="request-form/:serviceId" element={<RequestForm />} />
           <Route path="request/:requestId" element={<RequestDetails />} />

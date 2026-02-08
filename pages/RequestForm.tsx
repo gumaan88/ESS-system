@@ -22,8 +22,9 @@ const ElegantSlider: React.FC<SliderProps> = ({ label, value, min, max, onChange
     const percentage = ((value - min) / (max - min)) * 100;
 
     return (
-        <div className="w-full mb-6 relative px-2">
-            <div className="flex justify-between mb-2">
+        // Force LTR for the slider container to ensure drag direction matches fill direction visually
+        <div className="w-full mb-6 relative px-2" dir="ltr">
+            <div className="flex justify-between mb-2" dir="rtl">
                 <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</span>
             </div>
             
@@ -31,7 +32,7 @@ const ElegantSlider: React.FC<SliderProps> = ({ label, value, min, max, onChange
                 {/* Track Background */}
                 <div className="absolute w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
                     <div 
-                        className="h-full bg-gradient-to-l from-indigo-500 to-purple-600 transition-all duration-150 ease-out" 
+                        className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 transition-all duration-150 ease-out" 
                         style={{ width: `${percentage}%` }}
                     />
                 </div>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { getEmployeeRequests } from '../services/firebaseService';
@@ -16,6 +15,8 @@ const getStatusChipClass = (status: RequestStatus) => {
             return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
         case RequestStatus.RETURNED:
             return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
+        case RequestStatus.DRAFT:
+            return 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-300';
         default:
             return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
     }
@@ -48,6 +49,9 @@ const Dashboard: React.FC = () => {
         return <div className="flex justify-center items-center h-full"><Spinner /></div>;
     }
 
+    const drafts = requests.filter(r => r.status === RequestStatus.DRAFT);
+    const recentRequests = requests.filter(r => r.status !== RequestStatus.DRAFT);
+
     return (
         <div className="space-y-8">
             <div className="flex justify-between items-center">
@@ -64,13 +68,35 @@ const Dashboard: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
                     <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">رصيد الإجازات</h3>
-                    <p className="text-4xl font-bold text-indigo-600 dark:text-indigo-400 mt-2">{employeeData.balances.vacation} يوم</p>
+                    <p className="text-4xl font-bold text-indigo-600 dark:text-indigo-400 mt-2">{employeeData.balances.annual} يوم</p>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
                     <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">رصيد الأذونات</h3>
-                    <p className="text-4xl font-bold text-teal-600 dark:text-teal-400 mt-2">{employeeData.balances.permissions} ساعة</p>
+                    <p className="text-4xl font-bold text-teal-600 dark:text-teal-400 mt-2">{employeeData.balances.permissionsUsed || 0} / 8 ساعة</p>
                 </div>
             </div>
+
+             {/* Drafts Section */}
+             {drafts.length > 0 && (
+                <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-6 rounded-xl shadow-sm">
+                    <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+                        <span>📝</span> المسودات
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {drafts.map(draft => (
+                             <div key={draft.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-100 dark:border-gray-600 flex justify-between items-center">
+                                <div>
+                                    <h4 className="font-bold text-gray-800 dark:text-white">{draft.serviceTitle}</h4>
+                                    <p className="text-xs text-gray-500">{draft.createdAt.toDate().toLocaleDateString('ar-EG')}</p>
+                                </div>
+                                <Link to={`/request/${draft.id}`} className="text-sm bg-indigo-50 text-indigo-600 px-3 py-1 rounded hover:bg-indigo-100">
+                                    متابعة
+                                </Link>
+                             </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Recent Requests Section */}
             <div>
@@ -78,7 +104,7 @@ const Dashboard: React.FC = () => {
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md">
                     {loading ? (
                         <div className="flex justify-center"><Spinner /></div>
-                    ) : requests.length > 0 ? (
+                    ) : recentRequests.length > 0 ? (
                         <div className="overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                                 <thead className="bg-gray-50 dark:bg-gray-700">
@@ -90,7 +116,7 @@ const Dashboard: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                    {requests.slice(0, 5).map(req => (
+                                    {recentRequests.slice(0, 5).map(req => (
                                         <tr key={req.id}>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{req.serviceTitle}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{req.createdAt.toDate().toLocaleDateString('ar-EG')}</td>

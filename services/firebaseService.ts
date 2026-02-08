@@ -3,7 +3,7 @@ import {
     doc, getDoc, collection, query, where, getDocs, orderBy, addDoc, 
     serverTimestamp, Timestamp, runTransaction 
 } from 'firebase/firestore';
-import { Employee, ServiceDefinition, Request, RequestStatus, ApprovalStepType } from '../types';
+import { Employee, ServiceDefinition, Request, RequestStatus, ApprovalStepType, FieldType, SystemRole } from '../types';
 
 // --- عمليات القراءة (Read Operations) ---
 
@@ -154,4 +154,60 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
         const updatedHistory = [...request.history, newHistoryEntry];
         transaction.update(requestRef, { ...updateData, history: updatedHistory });
     });
+};
+
+// --- أدوات النظام (System Utils) ---
+
+export const seedInitialServices = async (): Promise<void> => {
+    const servicesCol = collection(db, 'services');
+    const servicesSnapshot = await getDocs(servicesCol);
+    if (!servicesSnapshot.empty) return;
+
+    const services = [
+        {
+            title: 'طلب إجازة',
+            icon: '🏖️',
+            color: 'blue-500',
+            fields: [
+                { id: 'startDate', label: 'تاريخ البداية', type: FieldType.DATE, required: true },
+                { id: 'endDate', label: 'تاريخ النهاية', type: FieldType.DATE, required: true },
+                { id: 'type', label: 'نوع الإجازة', type: FieldType.SELECT, options: ['سنوية', 'مرضية', 'بدون راتب'], required: true },
+                { id: 'notes', label: 'ملاحظات', type: FieldType.TEXTAREA, required: false }
+            ],
+            approvalSteps: [
+                { order: 1, type: ApprovalStepType.REPORTS_TO, roleValue: null },
+                { order: 2, type: ApprovalStepType.SYSTEM_ROLE, roleValue: SystemRole.HR_ADMIN }
+            ]
+        },
+        {
+            title: 'طلب استئذان',
+            icon: '⏱️',
+            color: 'yellow-500',
+            fields: [
+                { id: 'date', label: 'التاريخ', type: FieldType.DATE, required: true },
+                { id: 'startTime', label: 'وقت الخروج', type: FieldType.TIME, required: true },
+                { id: 'endTime', label: 'وقت العودة', type: FieldType.TIME, required: true },
+                { id: 'reason', label: 'السبب', type: FieldType.TEXTAREA, required: true }
+            ],
+            approvalSteps: [
+                { order: 1, type: ApprovalStepType.REPORTS_TO, roleValue: null }
+            ]
+        },
+        {
+            title: 'شهادة تعريف راتب',
+            icon: '📄',
+            color: 'green-500',
+            fields: [
+                { id: 'directedTo', label: 'موجهة إلى', type: FieldType.TEXT, required: true },
+                { id: 'lang', label: 'اللغة', type: FieldType.SELECT, options: ['عربي', 'إنجليزي'], required: true }
+            ],
+            approvalSteps: [
+                { order: 1, type: ApprovalStepType.SYSTEM_ROLE, roleValue: SystemRole.HR_ADMIN }
+            ]
+        }
+    ];
+
+    for (const service of services) {
+        await addDoc(servicesCol, service);
+    }
 };

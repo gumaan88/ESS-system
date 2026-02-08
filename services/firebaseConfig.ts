@@ -2,10 +2,10 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// Access environment variables safely by casting import.meta to any
+// Define env helper to bypass missing type definitions for import.meta.env
 const env = (import.meta as any).env;
 
-// في Vite، نستخدم import.meta.env مباشرة للسماح للمجمع باستبدال القيم أثناء البناء
+// استخدام import.meta.env مباشرة للسماح لـ Vite باستبدال القيم
 const firebaseConfig = {
   apiKey: env.VITE_FIREBASE_API_KEY,
   authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,

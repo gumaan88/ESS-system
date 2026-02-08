@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { getServices } from '../services/firebaseService';
+import { getServices, seedInitialServices } from '../services/firebaseService';
 import { ServiceDefinition } from '../types';
 import Spinner from '../components/Spinner';
 import { Link } from 'react-router-dom';
@@ -39,6 +38,19 @@ const NewRequest: React.FC = () => {
         fetchServices();
     }, []);
 
+    const handleSeed = async () => {
+        setLoading(true);
+        try {
+            await seedInitialServices();
+            const availableServices = await getServices();
+            setServices(availableServices);
+        } catch (error) {
+            console.error("Error seeding services:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-8">
             <div>
@@ -55,8 +67,22 @@ const NewRequest: React.FC = () => {
                     ))}
                 </div>
             ) : (
-                <div className="text-center py-10 bg-white dark:bg-gray-800 rounded-xl">
-                    <p className="text-gray-500 dark:text-gray-400">لا توجد خدمات متاحة حالياً.</p>
+                <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl flex flex-col items-center justify-center">
+                    <div className="mb-4 text-gray-400">
+                        <svg className="w-16 h-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">لا توجد خدمات متاحة</h3>
+                    <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-sm">
+                        يبدو أن قاعدة البيانات فارغة. يمكنك إضافة خدمات افتراضية للبدء في استخدام النظام.
+                    </p>
+                    <button 
+                        onClick={handleSeed}
+                        className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                        تهيئة النظام بالخدمات الافتراضية
+                    </button>
                 </div>
             )}
         </div>

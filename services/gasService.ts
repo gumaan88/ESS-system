@@ -1,9 +1,7 @@
 import { compressImage } from '../utils/imageCompressor';
 
-// Safely access GAS URL
-// @ts-ignore
-const env = (import.meta && import.meta.env) ? import.meta.env : {};
-const GAS_WEB_APP_URL = env.VITE_GAS_URL;
+// استخدام الوصول المباشر لضمان استبدال Vite للقيمة
+const GAS_WEB_APP_URL = (import.meta as any).env.VITE_GAS_URL;
 
 const toBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -15,7 +13,7 @@ const toBase64 = (file: File): Promise<string> =>
 
 export const uploadFile = async (file: File): Promise<string> => {
   if (!GAS_WEB_APP_URL) {
-    throw new Error("Google Apps Script URL is not configured in environment variables (VITE_GAS_URL).");
+    throw new Error("Google Apps Script URL is not configured (VITE_GAS_URL missing).");
   }
 
   let fileToUpload = file;
@@ -42,9 +40,6 @@ export const uploadFile = async (file: File): Promise<string> => {
     headers: {
       'Content-Type': 'application/json',
     },
-    // The default mode for fetch is 'cors'. Apps Script needs 'no-cors' for simple POST from browser.
-    // However, for getting a JSON response back, a proper CORS setup in Apps Script is needed.
-    // Assuming the GAS is set up to return JSON with proper CORS headers.
   });
 
   if (!response.ok) {

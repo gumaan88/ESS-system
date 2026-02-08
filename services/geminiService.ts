@@ -1,18 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Safely access API Key
-// @ts-ignore
-const env = (import.meta && import.meta.env) ? import.meta.env : {};
-const apiKey = env.VITE_GEMINI_API_KEY;
-
-// Initialize with a fallback to prevent crash on init, but handle missing key in calls
-const ai = new GoogleGenAI({ apiKey: apiKey || 'dummy-key' });
+// Always use process.env.API_KEY as per Google GenAI SDK guidelines
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const analyzeRequestJustification = async (justification: string): Promise<string> => {
-    if (!apiKey) {
-        return "خدمة الذكاء الاصطناعي غير متوفرة حالياً (مفتاح API مفقود).";
-    }
-
     try {
         const prompt = `
             You are an expert HR assistant. Analyze the following justification for an employee request. 
@@ -37,6 +28,6 @@ export const analyzeRequestJustification = async (justification: string): Promis
         return text.trim();
     } catch (error) {
         console.error("Error analyzing justification with Gemini:", error);
-        throw new Error("فشل في الحصول على تحليل من مساعد الذكاء الاصطناعي.");
+        return "حدث خطأ أثناء الاتصال بخدمة الذكاء الاصطناعي.";
     }
 };

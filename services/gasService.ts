@@ -1,7 +1,8 @@
 import { compressImage } from '../utils/imageCompressor';
 
-// @ts-ignore
-const GAS_WEB_APP_URL = import.meta.env.VITE_GAS_URL;
+// Access environment variables safely by casting import.meta to any
+const env = (import.meta as any).env;
+const GAS_WEB_APP_URL = env.VITE_GAS_URL;
 
 const toBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {

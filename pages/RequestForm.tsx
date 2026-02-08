@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getServiceDefinition, createRequest } from '../services/firebaseService';
@@ -6,7 +5,6 @@ import { ServiceDefinition, FieldType, FormField } from '../types';
 import Spinner from '../components/Spinner';
 import { useAuth } from '../hooks/useAuth';
 import { uploadFile } from '../services/gasService';
-import { analyzeRequestJustification } from '../services/geminiService';
 import Notification from '../components/Notification';
 
 const DynamicField: React.FC<{ field: FormField; value: any; onChange: (id: string, value: any) => void; }> = ({ field, value, onChange }) => {
@@ -52,8 +50,6 @@ const RequestForm: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
-    const [aiInsight, setAiInsight] = useState<string | null>(null);
-    const [analyzing, setAnalyzing] = useState(false);
 
     useEffect(() => {
         if (!serviceId) return;
@@ -72,21 +68,6 @@ const RequestForm: React.FC = () => {
 
     const handleFormChange = (id: string, value: any) => {
         setFormData(prev => ({ ...prev, [id]: value }));
-    };
-
-    const handleAnalyze = async () => {
-        const justificationField = service?.fields.find(f => f.type === FieldType.TEXTAREA);
-        if (justificationField && formData[justificationField.id]) {
-            setAnalyzing(true);
-            setAiInsight(null);
-            try {
-                const insight = await analyzeRequestJustification(formData[justificationField.id]);
-                setAiInsight(insight);
-            } catch (err) {
-                setAiInsight("حدث خطأ أثناء تحليل المبرر.");
-            }
-            setAnalyzing(false);
-        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -125,9 +106,6 @@ const RequestForm: React.FC = () => {
     if (loading) return <div className="flex justify-center items-center h-full"><Spinner /></div>;
     if (!service) return <p className="text-center text-red-500">{error || "لم يتم العثور على الخدمة."}</p>;
 
-    const justificationField = service.fields.find(f => f.type === FieldType.TEXTAREA);
-
-
     return (
         <div>
             <Notification message={error} type="error" onClose={() => setError('')} />
@@ -141,20 +119,6 @@ const RequestForm: React.FC = () => {
                         <DynamicField field={field} value={formData[field.id]} onChange={handleFormChange} />
                     </div>
                 ))}
-
-                {justificationField && formData[justificationField.id] && (
-                    <div className="pt-4 space-y-3">
-                         <button type="button" onClick={handleAnalyze} disabled={analyzing} className="px-4 py-2 text-sm bg-blue-100 text-blue-800 rounded-md hover:bg-blue-200 disabled:opacity-50">
-                            {analyzing ? <Spinner/> : 'تحليل المبرر بالذكاء الاصطناعي'}
-                        </button>
-                        {aiInsight && (
-                            <div className="p-4 bg-gray-100 dark:bg-gray-700 rounded-md text-sm">
-                                <p className="font-semibold text-gray-800 dark:text-gray-200">💡 رؤية الذكاء الاصطناعي:</p>
-                                <p className="mt-1 text-gray-600 dark:text-gray-300">{aiInsight}</p>
-                            </div>
-                        )}
-                    </div>
-                )}
                 
                 <div className="pt-5">
                     <div className="flex justify-end space-x-3 space-x-reverse">
@@ -172,4 +136,3 @@ const RequestForm: React.FC = () => {
 };
 
 export default RequestForm;
-

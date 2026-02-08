@@ -2,28 +2,38 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// Fix TS error by casting import.meta to any to access env
-const env = (import.meta as any).env;
+// Explicitly access import.meta.env properties for Vite static replacement
+// @ts-ignore
+const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+// @ts-ignore
+const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+// @ts-ignore
+const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+// @ts-ignore
+const storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+// @ts-ignore
+const messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;
+// @ts-ignore
+const appId = import.meta.env.VITE_FIREBASE_APP_ID;
 
-// في Vite، استخدم import.meta.env مباشرة للسماح للمجمع باستبدال القيم أثناء البناء
 const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: env.VITE_FIREBASE_APP_ID,
+  apiKey,
+  authDomain,
+  projectId,
+  storageBucket,
+  messagingSenderId,
+  appId,
 };
 
-// التحقق من وجود المفاتيح لتنبيه المطور في الـ Console
+// Check if API key is present to warn developer
 if (!firebaseConfig.apiKey) {
-  console.error("Firebase Configuration Error: VITE_FIREBASE_API_KEY is missing.");
+  console.error("Firebase API Key is missing. Please check your .env file and ensure variables start with VITE_");
 }
 
-// تهيئة التطبيق بنمط Singleton
+// Singleton pattern: Initialize app only if not already initialized
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// تصدير الخدمات
+// Export initialized services
 const auth = getAuth(app);
 const db = getFirestore(app);
 

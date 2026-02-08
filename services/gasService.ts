@@ -1,7 +1,7 @@
 import { compressImage } from '../utils/imageCompressor';
 
-// استخدام الوصول المباشر لضمان استبدال Vite للقيمة
-const GAS_WEB_APP_URL = (import.meta as any).env.VITE_GAS_URL;
+// @ts-ignore
+const GAS_WEB_APP_URL = import.meta.env.VITE_GAS_URL;
 
 const toBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {

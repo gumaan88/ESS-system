@@ -77,12 +77,18 @@ export const getEmployeeRequests = async (employeeId: string): Promise<Request[]
 
 export const getAssignedRequests = async (managerId: string): Promise<Request[]> => {
     try {
+        // Fetch all requests assigned to the current user
         const querySnapshot = await db.collection('requests').where("assignedTo", "==", managerId).get();
         const allAssigned = querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request));
-        // Filter purely in JS for safety
-        const pending = allAssigned.filter(r => r.status === RequestStatus.PENDING);
-        console.log(`Fetched ${allAssigned.length} total assigned, ${pending.length} are pending for manager ${managerId}`);
-        return pending;
+        
+        // Filter for tasks that require action: PENDING (approvals) or RETURNED (corrections)
+        const tasks = allAssigned.filter(r => 
+            r.status === RequestStatus.PENDING || 
+            r.status === RequestStatus.RETURNED
+        );
+        
+        console.log(`Fetched ${allAssigned.length} assigned, ${tasks.length} require action for ${managerId}`);
+        return tasks;
     } catch (e) {
         console.error("Error in getAssignedRequests:", e);
         throw e;

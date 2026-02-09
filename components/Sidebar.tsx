@@ -90,26 +90,24 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
             <span className="ms-3 font-medium">لوحة التحكم</span>
           </NavLink>
 
+          <NavLink end to="/inbox" className={({ isActive }) => navItemClass(isActive)}>
+            <span className="text-xl">📥</span>
+            <span className="ms-3 font-medium">صندوق الوارد</span>
+          </NavLink>
+
           <NavLink end to="/my-requests" className={({ isActive }) => navItemClass(isActive)}>
             <span className="text-xl">📂</span>
             <span className="ms-3 font-medium">طلباتي</span>
           </NavLink>
 
-          {isManagerOrAdmin && (
-            <>
-              <h3 className="text-[10px] uppercase text-gray-500 font-bold tracking-wider ps-4 mt-8 mb-4">الإدارة والإشراف</h3>
-              <NavLink end to="/inbox" className={({ isActive }) => navItemClass(isActive)}>
-                <span className="text-xl">📥</span>
-                <span className="ms-3 font-medium">صندوق الوارد</span>
-              </NavLink>
-            </>
-          )}
-
           {isAdmin && (
-            <NavLink end to="/admin" className={({ isActive }) => navItemClass(isActive)}>
-              <span className="text-xl">⚙️</span>
-              <span className="ms-3 font-medium">إعدادات النظام</span>
-            </NavLink>
+            <>
+                <h3 className="text-[10px] uppercase text-gray-500 font-bold tracking-wider ps-4 mt-8 mb-4">الإدارة</h3>
+                <NavLink end to="/admin" className={({ isActive }) => navItemClass(isActive)}>
+                <span className="text-xl">⚙️</span>
+                <span className="ms-3 font-medium">إعدادات النظام</span>
+                </NavLink>
+            </>
           )}
         </div>
 

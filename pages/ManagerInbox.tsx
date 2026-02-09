@@ -14,7 +14,7 @@ const getStatusChipClass = (status: RequestStatus) => {
         case RequestStatus.REJECTED:
             return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
         case RequestStatus.RETURNED:
-            return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
+            return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 border border-blue-200 animate-pulse';
         default:
             return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
     }
@@ -111,14 +111,14 @@ const ManagerInbox: React.FC = () => {
     }, [dashboardData, filterEmployee, filterMonth]);
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 animate-in fade-in duration-500">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
                         {activeTab === 'INBOX' ? 'صندوق الوارد' : 'لوحة متابعة الأذونات'}
                     </h1>
                     <p className="mt-1 text-gray-500 dark:text-gray-400">
-                        {activeTab === 'INBOX' ? 'الطلبات التي تتطلب إجراء منك.' : 'إحصائيات أذونات المرؤوسين.'}
+                        {activeTab === 'INBOX' ? 'المهام المعلقة: طلبات للموافقة أو طلبات معادة للتعديل.' : 'إحصائيات أذونات المرؤوسين.'}
                     </p>
                 </div>
                 
@@ -173,7 +173,7 @@ const ManagerInbox: React.FC = () => {
                                 </thead>
                                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                     {requests.map(req => (
-                                        <tr key={req.id}>
+                                        <tr key={req.id} className={req.status === RequestStatus.RETURNED ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{req.employeeName}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{req.serviceTitle}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
@@ -181,12 +181,16 @@ const ManagerInbox: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm">
                                                 <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusChipClass(req.status)}`}>
-                                                    {req.status}
+                                                    {req.status === RequestStatus.RETURNED ? 'مطلوب تعديل' : 
+                                                     req.status === RequestStatus.PENDING ? 'بانتظار موافقتك' : req.status}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-left text-sm font-medium">
-                                                <Link to={`/request/${req.id}`} className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200">
-                                                    فتح
+                                                <Link 
+                                                    to={`/request/${req.id}`} 
+                                                    className={`${req.status === RequestStatus.RETURNED ? 'text-blue-600 bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded-lg' : 'text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200'} font-bold transition-all`}
+                                                >
+                                                    {req.status === RequestStatus.RETURNED ? '✏️ تعديل' : 'فتح'}
                                                 </Link>
                                             </td>
                                         </tr>
@@ -195,7 +199,11 @@ const ManagerInbox: React.FC = () => {
                             </table>
                         </div>
                     ) : (
-                        <p className="text-center text-gray-500 dark:text-gray-400 py-4">لا توجد طلبات في صندوق الوارد الخاص بك.</p>
+                        <div className="text-center py-12">
+                            <div className="text-4xl mb-3">✅</div>
+                            <h3 className="text-lg font-medium text-gray-900 dark:text-white">لا توجد مهام معلقة</h3>
+                            <p className="text-gray-500 dark:text-gray-400">صندوق الوارد الخاص بك فارغ حالياً.</p>
+                        </div>
                     )}
                 </div>
             )}

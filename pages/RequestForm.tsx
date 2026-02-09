@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { getServiceDefinition, createRequest, updateRequest, getMonthlyPermissionUsage, getEmployeeRequests, getRequestDetails } from '../services/firebaseService';
-import { ServiceDefinition, FieldType, FormField, RequestStatus } from '../types';
+import { getServiceDefinition, createRequest, updateRequest, getMonthlyPermissionUsage, getRequestDetails } from '../services/firebaseService';
+import { ServiceDefinition, FieldType, FormField } from '../types';
 import Spinner from '../components/Spinner';
 import { useAuth } from '../hooks/useAuth';
 import Notification from '../components/Notification';
@@ -398,8 +398,7 @@ const RequestForm: React.FC = () => {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [permissionUsage, setPermissionUsage] = useState<number>(0);
-    const [hasPendingRequest, setHasPendingRequest] = useState(false);
-
+    
     // Clock States (Start 8:00, End 10:00 default)
     const [startHour, setStartHour] = useState(8);
     const [startMinute, setStartMinute] = useState(0);
@@ -418,14 +417,8 @@ const RequestForm: React.FC = () => {
                 setService(serviceDef);
                 
                 if (user) {
-                    // 2. Check for Pending Requests (Blocker)
-                    const userReqs = await getEmployeeRequests(user.uid);
-                    const pending = userReqs.find(r => r.serviceId === serviceId && r.status === RequestStatus.PENDING);
-                    if (pending && !draftId) { // Only block if not editing a specific draft
-                        setHasPendingRequest(true);
-                        setLoading(false);
-                        return;
-                    }
+                    // Removed the block that prevents multiple pending requests
+                    // to facilitate testing and concurrent requests.
 
                     // 3. Load Draft Data (if draftId present)
                     if (draftId) {
@@ -570,23 +563,6 @@ const RequestForm: React.FC = () => {
     
     if (loading) return <div className="flex justify-center items-center h-full"><Spinner /></div>;
     
-    if (hasPendingRequest) {
-        return (
-            <div className="flex flex-col items-center justify-center h-96 text-center space-y-4">
-                <div className="bg-yellow-100 p-6 rounded-full">
-                    <span className="text-4xl">⏳</span>
-                </div>
-                <h2 className="text-xl font-bold text-gray-800 dark:text-white">يوجد طلب قيد الانتظار</h2>
-                <p className="text-gray-600 dark:text-gray-400 max-w-md">
-                    لا يمكنك تقديم طلب جديد لهذه الخدمة لأن لديك طلب سابق ما زال قيد المراجعة. يرجى انتظار الرد النهائي.
-                </p>
-                <button onClick={() => navigate('/my-requests')} className="text-teal-600 font-bold hover:underline">
-                    الذهاب إلى طلباتي
-                </button>
-            </div>
-        );
-    }
-
     if (!service) return <p className="text-center text-red-500">{error || "لم يتم العثور على الخدمة."}</p>;
 
     return (

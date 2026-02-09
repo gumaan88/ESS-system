@@ -67,7 +67,7 @@ const AppRouter: React.FC = () => {
           <Route path="new-request" element={<NewRequest />} />
           <Route path="request-form/:serviceId" element={<RequestForm />} />
           <Route path="request/:requestId" element={<RequestDetails />} />
-          <Route path="inbox" element={<ProtectedRoute roles={['HOD', 'HR_MANAGER', 'FINANCE_MANAGER', 'HR_SPECIALIST', 'HR_ADMIN', 'CFO', 'CEO']}><ManagerInbox /></ProtectedRoute>} />
+          <Route path="inbox" element={<ManagerInbox />} />
           <Route path="admin" element={<ProtectedRoute roles={['HR_ADMIN']}><AdminDashboard /></ProtectedRoute>} />
           <Route path="admin/users" element={<ProtectedRoute roles={['HR_ADMIN']}><UserManagement /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />

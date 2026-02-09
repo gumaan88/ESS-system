@@ -17,6 +17,18 @@ const FIELD_LABELS: Record<string, string> = {
     'type': 'التصنيف'
 };
 
+const formatDuration = (ms: number) => {
+    if (ms < 1000) return "لحظات";
+    const minutes = Math.floor(ms / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) return `${days} يوم ${hours % 24 > 0 ? `و ${hours % 24} ساعة` : ''}`;
+    if (hours > 0) return `${hours} ساعة ${minutes % 60 > 0 ? `و ${minutes % 60} دقيقة` : ''}`;
+    if (minutes > 0) return `${minutes} دقيقة`;
+    return "أقل من دقيقة";
+};
+
 const RequestDetails: React.FC = () => {
     const { requestId } = useParams<{ requestId: string }>();
     const navigate = useNavigate();
@@ -126,15 +138,43 @@ const RequestDetails: React.FC = () => {
             case RequestStatus.APPROVED: return 'bg-green-100 text-green-800 border-green-200';
             case RequestStatus.REJECTED: return 'bg-red-100 text-red-800 border-red-200';
             case RequestStatus.PENDING: return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-            case RequestStatus.RETURNED: return 'bg-blue-100 text-blue-800 border-blue-200';
+            case RequestStatus.RETURNED: return 'bg-blue-100 text-blue-800 border-blue-200 animate-pulse';
             case RequestStatus.DRAFT: return 'bg-gray-200 text-gray-800 border-gray-300';
             default: return 'bg-gray-100 text-gray-800';
         }
     };
+    
+    // Find the latest return note if status is RETURNED
+    const lastReturnEntry = request.status === RequestStatus.RETURNED 
+        ? [...request.history].reverse().find(h => h.action.includes('تعديل') || h.note) 
+        : null;
 
     return (
         <div className="max-w-4xl mx-auto animate-in fade-in duration-500 pb-12">
             <Notification message={error} type="error" onClose={() => setError('')} />
+
+            {/* --- ALERT FOR RETURNED REQUEST --- */}
+            {isDraftOrReturned && request.status === RequestStatus.RETURNED && (
+                <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded shadow-md flex justify-between items-center animate-in slide-in-from-top-4">
+                    <div>
+                        <div className="flex items-center">
+                            <span className="text-2xl mr-2">↩️</span>
+                            <h3 className="font-bold text-blue-800">هذا الطلب معاد إليك للتعديل</h3>
+                        </div>
+                        {lastReturnEntry && (
+                            <div className="mt-2 text-sm text-blue-700">
+                                <span className="font-bold">ملاحظة من {lastReturnEntry.user}:</span> "{lastReturnEntry.note}"
+                            </div>
+                        )}
+                    </div>
+                    <button 
+                        onClick={handleEditDraft}
+                        className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold shadow hover:bg-blue-700 transition-transform hover:scale-105"
+                    >
+                        تعديل الآن
+                    </button>
+                </div>
+            )}
 
             <div className="bg-white dark:bg-gray-800 shadow-xl rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-700">
                 {/* Header */}
@@ -210,21 +250,50 @@ const RequestDetails: React.FC = () => {
                             سجل الإجراءات
                         </h3>
                         <div className="relative border-r border-gray-200 dark:border-gray-700 pr-4 mr-2">
-                           {request.history.map((entry, index) => (
-                               <div key={index} className="mb-6 relative">
-                                   <div className="absolute w-3 h-3 bg-teal-500 rounded-full mt-1.5 -right-[21px] border-2 border-white dark:border-gray-800"></div>
-                                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-baseline">
-                                       <h4 className="text-sm font-bold text-gray-900 dark:text-white">{entry.action}</h4>
-                                       <time className="text-xs text-gray-400">{entry.time?.toDate ? entry.time.toDate().toLocaleString('ar-EG') : 'Invalid Date'}</time>
-                                   </div>
-                                   <p className="text-xs text-gray-500 mt-0.5">بواسطة: {entry.user}</p>
-                                   {entry.note && (
-                                       <div className="mt-2 text-sm text-gray-600 dark:text-gray-300 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-100 dark:border-yellow-800/50 p-2 rounded-lg">
-                                           "{entry.note}"
+                           {request.history.map((entry, index) => {
+                               // Calculate duration from previous step
+                               let durationStr = "";
+                               if (index > 0) {
+                                   const prevTime = request.history[index - 1].time;
+                                   if (prevTime && entry.time) {
+                                       const diff = entry.time.toMillis() - prevTime.toMillis();
+                                       durationStr = formatDuration(diff);
+                                   }
+                               }
+
+                               return (
+                                   <div key={index} className="mb-8 relative">
+                                       <div className={`absolute w-3 h-3 rounded-full mt-1.5 -right-[21px] border-2 border-white dark:border-gray-800 ${
+                                            entry.action.includes('رفض') ? 'bg-red-500' : 
+                                            entry.action.includes('تعديل') ? 'bg-blue-500' : 'bg-teal-500'
+                                       }`}></div>
+                                       
+                                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-baseline mb-1">
+                                           <h4 className="text-sm font-bold text-gray-900 dark:text-white">{entry.action}</h4>
+                                           <time className="text-xs text-gray-400">{entry.time?.toDate ? entry.time.toDate().toLocaleString('ar-EG') : 'Invalid Date'}</time>
                                        </div>
-                                   )}
-                               </div>
-                           ))}
+                                       
+                                       <p className="text-xs text-gray-500">بواسطة: {entry.user}</p>
+                                       
+                                       {durationStr && (
+                                           <p className="text-[10px] text-indigo-400 mt-1 flex items-center gap-1">
+                                               <span>⏱️</span> استغرق: {durationStr}
+                                           </p>
+                                       )}
+
+                                       {entry.note && (
+                                           <div className={`mt-2 text-sm p-3 rounded-lg border ${
+                                                entry.action.includes('تعديل') 
+                                                ? 'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-200' 
+                                                : 'bg-gray-50 border-gray-100 text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
+                                           }`}>
+                                               <span className="font-bold block mb-1">ملاحظة:</span>
+                                               "{entry.note}"
+                                           </div>
+                                       )}
+                                   </div>
+                               );
+                           })}
                         </div>
                     </div>
                 </div>
@@ -295,7 +364,7 @@ const RequestDetails: React.FC = () => {
                      </div>
                 )}
 
-                {/* --- DRAFT EDIT ACTIONS --- */}
+                {/* --- DRAFT EDIT ACTIONS (Bottom bar as well) --- */}
                 {isDraftOrReturned && (
                      <div className="bg-amber-50 dark:bg-amber-900/20 p-6 border-t border-amber-200 dark:border-amber-800 flex justify-between items-center">
                         <div>

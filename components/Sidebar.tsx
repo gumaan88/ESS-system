@@ -29,7 +29,6 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
 
   const isAdmin = employeeData && employeeData.systemRole === SystemRole.HR_ADMIN;
 
-  // close on click outside
   useEffect(() => {
     const clickHandler = ({ target }: MouseEvent) => {
       if (!sidebar.current || !trigger.current) return;
@@ -40,90 +39,83 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
     return () => document.removeEventListener('click', clickHandler);
   });
 
+  const navItemClass = (isActive: boolean) => 
+    `flex items-center px-4 py-3 rounded-xl mb-1 transition-all duration-200 group ${
+      isActive 
+      ? 'bg-teal-600 text-white shadow-lg shadow-teal-200 dark:shadow-none' 
+      : 'text-gray-400 hover:bg-gray-700/50 hover:text-white'
+    }`;
+
   return (
     <div>
-      {/* Sidebar backdrop (mobile only) */}
       <div
-        className={`fixed inset-0 bg-gray-900 bg-opacity-30 z-40 lg:hidden lg:z-auto transition-opacity duration-200 ${
+        className={`fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-200 ${
           sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         aria-hidden="true"
       ></div>
 
-      {/* Sidebar */}
       <div
         id="sidebar"
         ref={sidebar}
-        className={`flex flex-col absolute z-40 end-0 top-0 lg:static lg:start-auto lg:top-auto lg:translate-x-0 transform h-screen overflow-y-scroll lg:overflow-y-auto no-scrollbar w-64 lg:w-20 lg:sidebar-expanded:!w-64 2xl:!w-64 shrink-0 bg-gray-800 p-4 transition-all duration-200 ease-in-out ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-64'
+        className={`flex flex-col absolute z-40 end-0 top-0 lg:static lg:start-auto lg:top-auto lg:translate-x-0 transform h-screen no-scrollbar w-72 shrink-0 bg-[#1a2b3c] p-4 transition-all duration-300 ease-in-out ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-72'
         }`}
       >
-        {/* Sidebar header */}
-        <div className="flex justify-between mb-10 pe-3 sm:pe-2">
-          {/* Close button */}
+        <div className="flex justify-between items-center mb-10 px-2">
           <button
             ref={trigger}
-            className="lg:hidden text-gray-500 hover:text-gray-400"
+            className="lg:hidden text-gray-400 hover:text-white"
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            aria-controls="sidebar"
-            aria-expanded={sidebarOpen}
           >
-            <span className="sr-only">Close sidebar</span>
-            <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M10.7 18.7l1.4-1.4L7.8 13H20v-2H7.8l4.3-4.3-1.4-1.4L4 12z" />
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-          {/* Logo */}
-          <NavLink end to="/" className="block">
-            <h1 className="text-white text-2xl font-bold">بوابة</h1>
+          
+          <NavLink end to="/" className="block mx-auto">
+            <img 
+              src="https://alawn.org/assets/images/logo/logo-dark.png" 
+              alt="Al-Awn Foundation" 
+              className="h-14 brightness-0 invert" 
+            />
           </NavLink>
         </div>
 
-        {/* Links */}
-        <div className="space-y-8">
-          <div>
-            <h3 className="text-xs uppercase text-gray-500 font-semibold ps-3">الصفحات</h3>
-            <ul className="mt-3">
-              <li className={`px-3 py-2 rounded-sm mb-0.5 last:mb-0 ${pathname === '/dashboard' && 'bg-gray-900'}`}>
-                <NavLink end to="/dashboard" className="block text-gray-200 hover:text-white truncate transition duration-150">
-                  <div className="flex items-center">
-                    <span className="text-xl">🏠</span>
-                    <span className="text-sm font-medium ms-3 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">لوحة التحكم</span>
-                  </div>
-                </NavLink>
-              </li>
-              
-              <li className={`px-3 py-2 rounded-sm mb-0.5 last:mb-0 ${pathname === '/my-requests' && 'bg-gray-900'}`}>
-                <NavLink end to="/my-requests" className="block text-gray-200 hover:text-white truncate transition duration-150">
-                  <div className="flex items-center">
-                    <span className="text-xl">📂</span>
-                    <span className="text-sm font-medium ms-3 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">طلباتي</span>
-                  </div>
-                </NavLink>
-              </li>
+        <div className="space-y-1">
+          <h3 className="text-[10px] uppercase text-gray-500 font-bold tracking-wider ps-4 mb-4">القائمة الرئيسية</h3>
+          
+          <NavLink end to="/dashboard" className={({ isActive }) => navItemClass(isActive)}>
+            <span className="text-xl">📊</span>
+            <span className="ms-3 font-medium">لوحة التحكم</span>
+          </NavLink>
 
-              {isManagerOrAdmin && (
-                 <li className={`px-3 py-2 rounded-sm mb-0.5 last:mb-0 ${pathname.includes('inbox') && 'bg-gray-900'}`}>
-                    <NavLink end to="/inbox" className="block text-gray-200 hover:text-white truncate transition duration-150">
-                    <div className="flex items-center">
-                         <span className="text-xl">📥</span>
-                        <span className="text-sm font-medium ms-3 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">صندوق الوارد</span>
-                    </div>
-                    </NavLink>
-                 </li>
-              )}
-               {isAdmin && (
-                 <li className={`px-3 py-2 rounded-sm mb-0.5 last:mb-0 ${pathname.includes('admin') && 'bg-gray-900'}`}>
-                    <NavLink end to="/admin" className="block text-gray-200 hover:text-white truncate transition duration-150">
-                    <div className="flex items-center">
-                        <span className="text-xl">⚙️</span>
-                        <span className="text-sm font-medium ms-3 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">لوحة الإدارة</span>
-                    </div>
-                    </NavLink>
-                 </li>
-              )}
-            </ul>
-          </div>
+          <NavLink end to="/my-requests" className={({ isActive }) => navItemClass(isActive)}>
+            <span className="text-xl">📂</span>
+            <span className="ms-3 font-medium">طلباتي</span>
+          </NavLink>
+
+          {isManagerOrAdmin && (
+            <>
+              <h3 className="text-[10px] uppercase text-gray-500 font-bold tracking-wider ps-4 mt-8 mb-4">الإدارة والإشراف</h3>
+              <NavLink end to="/inbox" className={({ isActive }) => navItemClass(isActive)}>
+                <span className="text-xl">📥</span>
+                <span className="ms-3 font-medium">صندوق الوارد</span>
+              </NavLink>
+            </>
+          )}
+
+          {isAdmin && (
+            <NavLink end to="/admin" className={({ isActive }) => navItemClass(isActive)}>
+              <span className="text-xl">⚙️</span>
+              <span className="ms-3 font-medium">إعدادات النظام</span>
+            </NavLink>
+          )}
+        </div>
+
+        <div className="mt-auto p-4 bg-teal-900/30 rounded-2xl border border-teal-800/50">
+          <p className="text-[10px] text-teal-400 font-bold mb-1">تحتاج مساعدة؟</p>
+          <p className="text-xs text-gray-400">تواصل مع قسم تكنولوجيا المعلومات بالمؤسسة</p>
         </div>
       </div>
     </div>

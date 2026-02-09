@@ -2,22 +2,41 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // دالة مساعدة للتحقق من تسجيل الدخول
+    // دالة للتحقق من تسجيل الدخول
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // السماح بقراءة وكتابة كل شيء للمستخدمين المسجلين (وضع التطوير)
-    // ملاحظة: في مرحلة الإنتاج (Production)، يجب تقييد هذه القواعد أكثر.
-    match /{document=**} {
+    // قواعد الموظفين
+    match /employees/{employeeId} {
+      // السماح بالقراءة إذا كان المستخدم:
+      // 1. يقرأ ملفه الشخصي
+      // 2. أو يقرأ ملف موظف يتبع له إدارياً (reportsTo == uid)
+      // 3. أو مسؤول نظام (HR_ADMIN)
+      allow read: if isSignedIn() && (
+        request.auth.uid == employeeId || 
+        resource.data.reportsTo == request.auth.uid ||
+        get(/databases/$(database)/documents/employees/$(request.auth.uid)).data.systemRole == 'HR_ADMIN'
+      );
+      
+      // السماح بإنشاء/تعديل الموظفين للمسؤولين فقط (يمكنك تفعيلها لاحقاً)
+      allow write: if isSignedIn(); 
+    }
+
+    // قواعد الطلبات
+    match /requests/{requestId} {
       allow read, write: if isSignedIn();
     }
     
-    // تخصيص أكثر دقة (اختياري للمستقبل):
-    // match /requests/{requestId} {
-    //   allow create: if isSignedIn();
-    //   allow read: if isSignedIn() && (resource.data.employeeId == request.auth.uid || resource.data.assignedTo == request.auth.uid || resource.data.assignedTo == null);
-    //   allow update: if isSignedIn();
-    // }
+    // قواعد الخدمات
+    match /services/{serviceId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn(); // تبسيط للتطوير
+    }
+    
+    // قاعدة عامة (للتطوير فقط - يفضل إزالتها عند الإنتاج)
+    match /{document=**} {
+      allow read, write: if isSignedIn(); 
+    }
   }
 }

@@ -251,12 +251,12 @@ const RequestDetails: React.FC = () => {
                         </h3>
                         <div className="relative border-r border-gray-200 dark:border-gray-700 pr-4 mr-2">
                            {request.history.map((entry, index) => {
-                               // Calculate duration from previous step
+                               // Calculate duration spent in this stage (until next step)
                                let durationStr = "";
-                               if (index > 0) {
-                                   const prevTime = request.history[index - 1].time;
-                                   if (prevTime && entry.time) {
-                                       const diff = entry.time.toMillis() - prevTime.toMillis();
+                               if (index < request.history.length - 1) {
+                                   const nextEntry = request.history[index + 1];
+                                   if (entry.time && nextEntry.time) {
+                                       const diff = nextEntry.time.toMillis() - entry.time.toMillis();
                                        durationStr = formatDuration(diff);
                                    }
                                }
@@ -276,9 +276,10 @@ const RequestDetails: React.FC = () => {
                                        <p className="text-xs text-gray-500">بواسطة: {entry.user}</p>
                                        
                                        {durationStr && (
-                                           <p className="text-[10px] text-indigo-400 mt-1 flex items-center gap-1">
-                                               <span>⏱️</span> استغرق: {durationStr}
-                                           </p>
+                                           <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full border border-indigo-100 dark:border-indigo-800">
+                                               <span>⏳</span>
+                                               <span>استغرق في هذه المرحلة: {durationStr}</span>
+                                           </div>
                                        )}
 
                                        {entry.note && (
@@ -290,6 +291,18 @@ const RequestDetails: React.FC = () => {
                                                <span className="font-bold block mb-1">ملاحظة:</span>
                                                "{entry.note}"
                                            </div>
+                                       )}
+                                       
+                                       {/* Quick Action Button for Returned Requests in History */}
+                                       {entry.action.includes('تعديل') && isOwner && request.status === RequestStatus.RETURNED && index === request.history.length - 1 && (
+                                            <div className="mt-3">
+                                                <button 
+                                                    onClick={handleEditDraft}
+                                                    className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 flex items-center gap-1 shadow-sm transition-transform hover:scale-105"
+                                                >
+                                                    <span>✏️</span> تعديل الطلب الآن
+                                                </button>
+                                            </div>
                                        )}
                                    </div>
                                );

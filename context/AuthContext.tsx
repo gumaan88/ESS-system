@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from '../services/firebaseConfig';
+import firebase from 'firebase/app';
 import { getEmployeeData } from '../services/firebaseService';
 import { Employee } from '../types';
 
 interface AuthContextType {
-  user: User | null;
+  user: firebase.User | null;
   employeeData: Employee | null;
   loading: boolean;
   logout: () => Promise<void>;
@@ -14,12 +14,12 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<firebase.User | null>(null);
   const [employeeData, setEmployeeData] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
       setLoading(true);
       if (currentUser) {
         setUser(currentUser);
@@ -30,7 +30,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           console.error("Failed to fetch employee data:", error);
           setEmployeeData(null);
           // Optional: sign out user if their employee data doesn't exist
-          await signOut(auth);
+          await auth.signOut();
           setUser(null);
         }
       } else {
@@ -44,7 +44,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
   
   const logout = async () => {
-    await signOut(auth);
+    await auth.signOut();
   };
 
 

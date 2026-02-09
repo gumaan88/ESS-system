@@ -1,10 +1,7 @@
 import { db, firebaseConfig } from './firebaseConfig';
-import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { 
-    doc, getDoc, collection, query, where, getDocs, orderBy, addDoc, 
-    serverTimestamp, Timestamp, runTransaction, updateDoc, setDoc 
-} from 'firebase/firestore';
+import firebase from 'firebase/app';
+import 'firebase/auth';
+import 'firebase/firestore';
 import { Employee, ServiceDefinition, Request, RequestStatus, ApprovalStepType, FieldType, SystemRole } from '../types';
 
 // --- الثوابت (Hardcoded Services) ---
@@ -26,26 +23,22 @@ export const PERMISSION_SERVICE_DEF: ServiceDefinition = {
 // --- عمليات القراءة (Read Operations) ---
 
 export const getEmployeeData = async (uid: string): Promise<Employee> => {
-    const docRef = doc(db, 'employees', uid);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
+    const docSnap = await db.collection('employees').doc(uid).get();
+    if (docSnap.exists) {
         return { uid: docSnap.id, ...(docSnap.data() as Record<string, any>) } as Employee;
     }
     throw new Error("لم يتم العثور على بيانات الموظف!");
 };
 
 export const getAllEmployees = async (): Promise<Employee[]> => {
-    const employeesCol = collection(db, 'employees');
-    const q = query(employeesCol); 
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await db.collection('employees').get();
     return querySnapshot.docs.map(doc => ({ uid: doc.id, ...(doc.data() as Record<string, any>) } as Employee));
 };
 
 export const getServices = async (): Promise<ServiceDefinition[]> => {
     const services: ServiceDefinition[] = [PERMISSION_SERVICE_DEF];
     try {
-        const servicesCol = collection(db, 'services');
-        const querySnapshot = await getDocs(servicesCol);
+        const querySnapshot = await db.collection('services').get();
         querySnapshot.forEach((doc) => {
              services.push({ id: doc.id, ...(doc.data() as any) } as ServiceDefinition);
         });
@@ -60,9 +53,8 @@ export const getServiceDefinition = async (serviceId: string): Promise<ServiceDe
         return PERMISSION_SERVICE_DEF;
     }
     try {
-        const docRef = doc(db, 'services', serviceId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
+        const docSnap = await db.collection('services').doc(serviceId).get();
+        if (docSnap.exists) {
             return { id: docSnap.id, ...(docSnap.data() as Record<string, any>) } as ServiceDefinition;
         }
     } catch (error) {
@@ -72,12 +64,8 @@ export const getServiceDefinition = async (serviceId: string): Promise<ServiceDe
 };
 
 export const getEmployeeRequests = async (employeeId: string): Promise<Request[]> => {
-    const requestsCol = collection(db, 'requests');
-    // Query ONLY by employeeId. No sorting, no other filtering here to ensure it works without custom indexes.
-    const q = query(requestsCol, where("employeeId", "==", employeeId));
-    
     try {
-        const querySnapshot = await getDocs(q);
+        const querySnapshot = await db.collection('requests').where("employeeId", "==", employeeId).get();
         const reqs = querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request));
         console.log(`Fetched ${reqs.length} requests for employee ${employeeId}`);
         return reqs;
@@ -88,16 +76,8 @@ export const getEmployeeRequests = async (employeeId: string): Promise<Request[]
 };
 
 export const getAssignedRequests = async (managerId: string): Promise<Request[]> => {
-    const requestsCol = collection(db, 'requests');
-    // Removed 'status' filter from query to avoid composite index requirement.
-    // We will filter in Javascript.
-    const q = query(
-        requestsCol,
-        where("assignedTo", "==", managerId)
-    );
-    
     try {
-        const querySnapshot = await getDocs(q);
+        const querySnapshot = await db.collection('requests').where("assignedTo", "==", managerId).get();
         const allAssigned = querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request));
         // Filter purely in JS for safety
         const pending = allAssigned.filter(r => r.status === RequestStatus.PENDING);
@@ -110,23 +90,15 @@ export const getAssignedRequests = async (managerId: string): Promise<Request[]>
 };
 
 export const getRequestDetails = async (requestId: string): Promise<Request> => {
-    const docRef = doc(db, 'requests', requestId);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
+    const docSnap = await db.collection('requests').doc(requestId).get();
+    if (docSnap.exists) {
         return { id: docSnap.id, ...(docSnap.data() as Record<string, any>) } as Request;
     }
     throw new Error("الطلب غير موجود!");
 };
 
 export const getMonthlyPermissionUsage = async (employeeId: string, month: number, year: number): Promise<number> => {
-    const requestsCol = collection(db, 'requests');
-    // Simple query
-    const q = query(
-        requestsCol, 
-        where("employeeId", "==", employeeId)
-    );
-    
-    const snapshot = await getDocs(q);
+    const snapshot = await db.collection('requests').where("employeeId", "==", employeeId).get();
     let totalMinutes = 0;
 
     snapshot.docs.forEach(doc => {
@@ -148,16 +120,12 @@ export const getMonthlyPermissionUsage = async (employeeId: string, month: numbe
 };
 
 export const getSubordinatesRequests = async (managerId: string): Promise<Request[]> => {
-    const employeesCol = collection(db, 'employees');
-    const empQuery = query(employeesCol, where("reportsTo", "==", managerId));
-    const empSnap = await getDocs(empQuery);
+    const empSnap = await db.collection('employees').where("reportsTo", "==", managerId).get();
     const subordinateIds = empSnap.docs.map(d => d.id);
 
     if (subordinateIds.length === 0) return [];
 
-    const requestsCol = collection(db, 'requests');
     // Using 'in' operator. Max 10 items.
-    // If more than 10 subordinates, this needs a loop or different logic, but fine for now.
     const chunks = [];
     for (let i = 0; i < subordinateIds.length; i += 10) {
         chunks.push(subordinateIds.slice(i, i + 10));
@@ -166,8 +134,7 @@ export const getSubordinatesRequests = async (managerId: string): Promise<Reques
     let allRequests: Request[] = [];
     
     for (const chunk of chunks) {
-        const q = query(requestsCol, where("employeeId", "in", chunk));
-        const reqSnap = await getDocs(q);
+        const reqSnap = await db.collection('requests').where("employeeId", "in", chunk).get();
         reqSnap.forEach(doc => {
             allRequests.push({ id: doc.id, ...(doc.data() as Record<string, any>) } as Request);
         });
@@ -179,12 +146,14 @@ export const getSubordinatesRequests = async (managerId: string): Promise<Reques
 // --- محرك سير العمل وعمليات الكتابة (Workflow Engine & Write Operations) ---
 
 export const registerNewEmployee = async (data: any): Promise<void> => {
-    const tempApp = initializeApp(firebaseConfig, "secondaryApp");
-    const tempAuth = getAuth(tempApp);
+    const tempApp = firebase.initializeApp(firebaseConfig, "secondaryApp");
+    const tempAuth = tempApp.auth();
 
     try {
-        const userCredential = await createUserWithEmailAndPassword(tempAuth, data.email, data.password);
-        const uid = userCredential.user.uid;
+        const userCredential = await tempAuth.createUserWithEmailAndPassword(data.email, data.password);
+        const uid = userCredential.user?.uid;
+
+        if (!uid) throw new Error("Failed to generate UID");
 
         const employeeData: Omit<Employee, 'uid'> = {
             name: data.name,
@@ -202,39 +171,36 @@ export const registerNewEmployee = async (data: any): Promise<void> => {
             delegation: null
         };
 
-        await setDoc(doc(db, 'employees', uid), employeeData);
-        await signOut(tempAuth);
+        await db.collection('employees').doc(uid).set(employeeData);
+        await tempAuth.signOut();
     } catch (error: any) {
         console.error("Error creating user:", error);
         throw error; 
     } finally {
-        await deleteApp(tempApp);
+        await tempApp.delete();
     }
 };
 
 export const updateEmployeeAdminData = async (uid: string, data: Partial<Employee>): Promise<void> => {
-    const employeeRef = doc(db, 'employees', uid);
-    await updateDoc(employeeRef, data);
+    await db.collection('employees').doc(uid).update(data);
 };
 
 export const updateEmployeeDelegation = async (uid: string, delegation: { uid: string, name: string, until: string } | null): Promise<void> => {
-    const employeeRef = doc(db, 'employees', uid);
     let dataToUpdate = null;
     if (delegation) {
         dataToUpdate = {
             uid: delegation.uid,
             name: delegation.name,
-            until: Timestamp.fromDate(new Date(delegation.until))
+            until: firebase.firestore.Timestamp.fromDate(new Date(delegation.until))
         };
     }
-    await updateDoc(employeeRef, {
+    await db.collection('employees').doc(uid).update({
         delegation: dataToUpdate
     });
 };
 
 export const updateEmployeeRole = async (uid: string, newRole: SystemRole): Promise<void> => {
-    const employeeRef = doc(db, 'employees', uid);
-    await updateDoc(employeeRef, {
+    await db.collection('employees').doc(uid).update({
         systemRole: newRole
     });
 };
@@ -254,9 +220,7 @@ const getNextAssignee = async (employeeId: string, service: ServiceDefinition, c
         }
         assigneeUid = employee.reportsTo;
     } else if (nextStep.type === ApprovalStepType.SYSTEM_ROLE) {
-        const employeesCol = collection(db, 'employees');
-        const q = query(employeesCol, where("systemRole", "==", nextStep.roleValue));
-        const querySnapshot = await getDocs(q);
+        const querySnapshot = await db.collection('employees').where("systemRole", "==", nextStep.roleValue).get();
         if (querySnapshot.empty) throw new Error(`لم يتم العثور على موظف بالدور الوظيفي المطلوب للموافقة: ${nextStep.roleValue}`);
         assigneeUid = querySnapshot.docs[0].id;
     }
@@ -264,7 +228,7 @@ const getNextAssignee = async (employeeId: string, service: ServiceDefinition, c
     if (assigneeUid) {
         const assigneeData = await getEmployeeData(assigneeUid);
         if (assigneeData.delegation && assigneeData.delegation.uid) {
-            const now = Timestamp.now();
+            const now = firebase.firestore.Timestamp.now();
             if (assigneeData.delegation.until.toMillis() > now.toMillis()) {
                 console.log(`Task delegated from ${assigneeData.name} to ${assigneeData.delegation.name}`);
                 return assigneeData.delegation.uid;
@@ -295,8 +259,7 @@ export const createRequest = async (employeeId: string, employeeName: string, se
 
     const employee = await getEmployeeData(employeeId);
 
-    const requestsCol = collection(db, 'requests');
-    await addDoc(requestsCol, {
+    await db.collection('requests').add({
         employeeId,
         employeeName,
         department: employee.department || '',
@@ -306,23 +269,61 @@ export const createRequest = async (employeeId: string, employeeName: string, se
         currentStepIndex: 0,
         assignedTo: initialAssignee,
         payload,
-        createdAt: serverTimestamp(),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         history: [{
             user: employeeName,
             uid: employeeId,
             action: actionLog,
-            time: Timestamp.now(),
+            time: firebase.firestore.Timestamp.now(),
         }],
+    });
+};
+
+export const updateRequest = async (requestId: string, employeeId: string, service: ServiceDefinition, payload: Record<string, any>, isDraft: boolean = false): Promise<void> => {
+    const requestRef = db.collection('requests').doc(requestId);
+    const requestSnap = await requestRef.get();
+    
+    if (!requestSnap.exists) throw new Error("الطلب غير موجود");
+    const existingRequest = requestSnap.data() as Request;
+    
+    // Check ownership
+    if (existingRequest.employeeId !== employeeId) throw new Error("غير مصرح لك بتعديل هذا الطلب");
+
+    let initialAssignee = existingRequest.assignedTo;
+    let status = isDraft ? RequestStatus.DRAFT : RequestStatus.PENDING;
+    let actionLog = isDraft ? 'تحديث المسودة' : 'تقديم الطلب (بعد التعديل)';
+
+    if (!isDraft) {
+        const next = await getNextAssignee(employeeId, service, -1);
+        if (!next) {
+            throw new Error("تعذر تحديد المسؤول عن الموافقة الأولى.");
+        }
+        initialAssignee = next;
+    }
+
+    const newHistoryEntry = {
+        user: existingRequest.employeeName,
+        uid: employeeId,
+        action: actionLog,
+        time: firebase.firestore.Timestamp.now(),
+    };
+
+    await requestRef.update({
+        payload,
+        status,
+        assignedTo: initialAssignee,
+        currentStepIndex: 0, // Reset steps when resubmitting
+        history: [...existingRequest.history, newHistoryEntry]
     });
 };
 
 
 export const processRequestAction = async (requestId: string, action: 'APPROVE' | 'REJECT' | 'RETURN' | 'SUBMIT', note: string, userUid: string, userName: string) => {
-    const requestRef = doc(db, 'requests', requestId);
+    const requestRef = db.collection('requests').doc(requestId);
     
-    await runTransaction(db, async (transaction) => {
+    await db.runTransaction(async (transaction) => {
         const requestSnap = await transaction.get(requestRef);
-        if (!requestSnap.exists()) throw new Error("الطلب غير موجود");
+        if (!requestSnap.exists) throw new Error("الطلب غير موجود");
     
         const request = requestSnap.data() as Request;
         const service = await getServiceDefinition(request.serviceId);
@@ -332,7 +333,7 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
             uid: userUid,
             action: '',
             note: note || '',
-            time: Timestamp.now(),
+            time: firebase.firestore.Timestamp.now(),
         };
         
         let updateData: Partial<Request> = {};
@@ -372,6 +373,5 @@ export const processRequestAction = async (requestId: string, action: 'APPROVE' 
 };
 
 export const addService = async (serviceData: Omit<ServiceDefinition, 'id'>): Promise<void> => {
-    const servicesCol = collection(db, 'services');
-    await addDoc(servicesCol, serviceData);
+    await db.collection('services').add(serviceData);
 };

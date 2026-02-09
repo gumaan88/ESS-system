@@ -1,6 +1,6 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import firebase from 'firebase/app';
+import 'firebase/auth';
+import 'firebase/firestore';
 
 // الوصول للمتغيرات البيئية بشكل آمن لتجنب أخطاء Undefined
 const env = (import.meta as any).env || {};
@@ -19,11 +19,15 @@ if (!firebaseConfig.apiKey) {
   console.error("Firebase Configuration Error: VITE_FIREBASE_API_KEY is missing. Please check your .env file.");
 }
 
-// تهيئة التطبيق بنمط Singleton
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+// تهيئة التطبيق بنمط Singleton (v8 style)
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
 
 // تصدير الخدمات
-const auth = getAuth(app);
-const db = getFirestore(app);
+const app = firebase.app();
+const auth = firebase.auth();
+const db = firebase.firestore();
 
 export { app, auth, db };
+export default firebase;

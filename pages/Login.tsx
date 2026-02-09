@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../services/firebaseConfig';
 import { useNavigate } from 'react-router-dom';
 import Notification from '../components/Notification';
-import { FirebaseError } from 'firebase/app';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -17,12 +15,12 @@ const Login: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await auth.signInWithEmailAndPassword(email, password);
       navigate('/dashboard');
     } catch (err: any) {
       console.error("Login Error:", err);
       let errorMessage = 'فشل تسجيل الدخول. يرجى التحقق من بياناتك والمحاولة مرة أخرى.';
-       if (err instanceof FirebaseError) {
+       if (err.code) {
         switch (err.code) {
           case 'auth/user-not-found':
           case 'auth/wrong-password':

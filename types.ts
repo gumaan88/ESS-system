@@ -1,5 +1,7 @@
+import firebase from 'firebase/app';
+import 'firebase/firestore';
 
-import { Timestamp } from 'firebase/firestore';
+export type Timestamp = firebase.firestore.Timestamp;
 
 export enum SystemRole {
   EMPLOYEE = 'EMPLOYEE',

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { getServiceDefinition, createRequest, getMonthlyPermissionUsage } from '../services/firebaseService';
-import { ServiceDefinition, FieldType, FormField } from '../types';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { getServiceDefinition, createRequest, updateRequest, getMonthlyPermissionUsage, getEmployeeRequests, getRequestDetails } from '../services/firebaseService';
+import { ServiceDefinition, FieldType, FormField, RequestStatus } from '../types';
 import Spinner from '../components/Spinner';
 import { useAuth } from '../hooks/useAuth';
 import Notification from '../components/Notification';
@@ -21,7 +21,6 @@ interface TimeInputProps {
 const TimeInput: React.FC<TimeInputProps> = ({ label, hour, minute, onHourChange, onMinuteChange, colorClass }) => {
     const handleHourChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         let val = parseInt(e.target.value) || 0;
-        // Clamp visually for UX, though logic handles validation
         if (val < 0) val = 0; 
         if (val > 23) val = 23;
         onHourChange(val);
@@ -45,7 +44,7 @@ const TimeInput: React.FC<TimeInputProps> = ({ label, hour, minute, onHourChange
                         value={hour.toString().padStart(2, '0')}
                         onChange={handleHourChange}
                         onFocus={(e) => e.target.select()}
-                        className="w-12 h-10 text-center text-xl font-bold bg-gray-50 dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        className="w-12 h-10 text-center text-xl font-bold bg-gray-50 dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-teal-500 focus:outline-none"
                     />
                     <span className="text-[10px] text-gray-400 mt-1">ساعة</span>
                 </div>
@@ -57,7 +56,7 @@ const TimeInput: React.FC<TimeInputProps> = ({ label, hour, minute, onHourChange
                         value={minute.toString().padStart(2, '0')}
                         onChange={handleMinuteChange}
                         onFocus={(e) => e.target.select()}
-                        className="w-12 h-10 text-center text-xl font-bold bg-gray-50 dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        className="w-12 h-10 text-center text-xl font-bold bg-gray-50 dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-teal-500 focus:outline-none"
                     />
                     <span className="text-[10px] text-gray-400 mt-1">دقيقة</span>
                 </div>
@@ -87,57 +86,62 @@ const CircularTimePicker: React.FC<CircularTimePickerProps> = ({
     const R = 100;  
     const SIZE = 280;
 
-    // Convert time to angle (Linear mapping for smooth movement)
-    // 8:00 (480 min) -> 240 degrees
-    // 16:00 (960 min) -> 480 degrees (which is 120 visually)
-    // Range is 8 hours = 480 minutes.
-    // Degrees Span = 240 deg.
-    // Function: time -> minutes from 8am -> degrees from 240.
+    // WORK HOURS CONSTANTS: 8:00 AM to 4:00 PM (16:00)
+    // We map 8:00 -> Angle 240 deg (8 on clock)
+    // We map 16:00 -> Angle 120 deg (4 on clock)
+    // Visual Clock: 0 deg = 12 o'clock (Top), 90 = 3, 180 = 6, 270 = 9.
+    
+    // Normalize any hour/minute to absolute minutes from 0:00
+    const toTotalMinutes = (h: number, m: number) => h * 60 + m;
+
+    // Convert Time to Angle (Degrees 0-360, 0 at top)
     const timeToAngle = (h: number, m: number) => {
-        const totalMinutes = h * 60 + m;
-        const minutesFrom8 = totalMinutes - 480; // 8:00 is 480 min
-        // 480 minutes covers 240 degrees (from 240 to 120 passing through 0)
-        // Ratio: 0.5 degree per minute
-        let angle = 240 + (minutesFrom8 * 0.5);
-        return angle % 360;
+        // Standard clock position: (h % 12) * 30 + m * 0.5
+        // 8:00 => 8 * 30 = 240 deg
+        // 16:00 (4pm) => 4 * 30 = 120 deg
+        let hour12 = h % 12; 
+        if (hour12 === 0 && h === 12) hour12 = 12; // if needed
+        return (hour12 * 30) + (m * 0.5);
     };
 
-    // Convert angle to time (Linear mapping inverse)
+    // Convert Angle to Time (Restricted to 8:00 - 16:00)
     const angleToTime = (angle: number) => {
-        // Normalize angle so 0 is at 3 o'clock in math, but we use clock coordinates where 0 is 12.
-        // Our clock coordinates: 0 is 12, 90 is 3, 180 is 6, 270 is 9.
-        // Valid visual range: 240 (8am) -> 360/0 (12pm) -> 120 (4pm).
+        // angle is 0 at top, clockwise
+        // Valid range on clock face for 8am-4pm is:
+        // 240 deg (8am) -> 360 deg (12pm) -> 0 deg -> 120 deg (4pm)
         
-        // Normalize logic:
-        // We want a linear value "degFrom240".
-        // If angle >= 240: degFrom240 = angle - 240.
-        // If angle <= 120: degFrom240 = angle + 120.
-        // Gap area (120 < angle < 240): Snap to nearest.
+        // Normalize angle for easier logic:
+        // Let's shift so 8am (240) is 0.
+        // 240 -> 0 relative
+        // 360 -> 120 relative
+        // 120 -> 240 relative
         
-        let degFrom240 = 0;
+        let relativeAngle = 0;
         if (angle >= 240) {
-            degFrom240 = angle - 240;
+            relativeAngle = angle - 240;
         } else if (angle <= 120) {
-            degFrom240 = angle + 120; // e.g. 0 (12pm) becomes 120 deg from start. 120 (4pm) becomes 240.
+            relativeAngle = angle + 120;
         } else {
-            // In the dead zone (bottom of clock)
-            // 180 is 6 o'clock.
-            if (angle < 180) degFrom240 = 240; // Snap to max (4pm)
-            else degFrom240 = 0; // Snap to min (8am)
+            // Dead zone (120 to 240) - Bottom of clock
+            // Snap to nearest
+            const distTo4pm = Math.abs(angle - 120);
+            const distTo8am = Math.abs(angle - 240);
+            if (distTo4pm < distTo8am) return { h: 16, m: 0 };
+            else return { h: 8, m: 0 };
         }
 
-        // minutes = degFrom240 / 0.5 => degFrom240 * 2
-        const minutesFrom8 = degFrom240 * 2;
-        const totalMinutes = 480 + minutesFrom8;
+        // 1 degree = 2 minutes (since 360 deg = 12 hours = 720 min, so 1 deg = 2 min)
+        const minutesAdded = relativeAngle * 2;
+        const totalMinutes = 480 + minutesAdded; // 480 is 8:00 in minutes
 
         let h = Math.floor(totalMinutes / 60);
         let m = Math.floor(totalMinutes % 60);
-
-        // Snap to nearest 5 minutes
+        
+        // Snap to 5 min
         m = Math.round(m / 5) * 5;
         if (m === 60) { m = 0; h += 1; }
-
-        // Hard clamp limits
+        
+        // Hard Clamp
         if (h < 8) return { h: 8, m: 0 };
         if (h > 16 || (h === 16 && m > 0)) return { h: 16, m: 0 };
 
@@ -147,29 +151,31 @@ const CircularTimePicker: React.FC<CircularTimePickerProps> = ({
     const handleMove = (e: MouseEvent | TouchEvent, isStart: boolean) => {
         if (!svgRef.current) return;
         const rect = svgRef.current.getBoundingClientRect();
-        
         const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
         const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
-
+        
+        // Calculate vector from center
         const x = clientX - rect.left - CX;
         const y = clientY - rect.top - CY;
 
-        // Angle from 12 o'clock CW
-        let angleDeg = Math.atan2(y, x) * (180 / Math.PI) + 90;
+        // Atan2 gives angle from X axis (3 o'clock). We want from Y axis (12 o'clock)
+        // Standard Atan2: 0 at 3 o'clock, +PI at 9.
+        // Shift to Clock: Angle = Atan2(y, x) + 90deg
+        let angleDeg = (Math.atan2(y, x) * 180 / Math.PI) + 90;
         if (angleDeg < 0) angleDeg += 360;
 
-        const { h, m } = angleToTime(angleDeg);
+        const newTime = angleToTime(angleDeg);
+
+        const currentStartMins = toTotalMinutes(startHour, startMinute);
+        const currentEndMins = toTotalMinutes(endHour, endMinute);
+        const newMins = toTotalMinutes(newTime.h, newTime.m);
 
         if (isStart) {
-            // Prevent pushing end time
-            const startMins = h * 60 + m;
-            const endMins = endHour * 60 + endMinute;
-            if (startMins < endMins) onChangeStart(h, m);
+            // Start cannot be after End
+            if (newMins < currentEndMins) onChangeStart(newTime.h, newTime.m);
         } else {
-            // Prevent pushing start time
-            const startMins = startHour * 60 + startMinute;
-            const endMins = h * 60 + m;
-            if (endMins > startMins) onChangeEnd(h, m);
+            // End cannot be before Start
+            if (newMins > currentStartMins) onChangeEnd(newTime.h, newTime.m);
         }
     };
 
@@ -200,33 +206,35 @@ const CircularTimePicker: React.FC<CircularTimePickerProps> = ({
     const startAngle = timeToAngle(startHour, startMinute);
     const endAngle = timeToAngle(endHour, endMinute);
     
-    // SVG Path for Arc
-    let diff = endAngle - startAngle;
-    if (diff < 0) diff += 360;
-    const largeArc = diff > 180 ? 1 : 0;
-    const startPt = polarToCartesian(endAngle); // Path goes backwards visually? No, usually Start -> End
-    // Let's draw strictly from Start Angle to End Angle
-    // For SVG 'A', we need start point and end point.
-    // Move to Start Point
+    // Calculate Large Arc Flag
+    // We are drawing from Start to End clockwise.
+    // If we cross 0 (12 o'clock), the math gets tricky.
+    // Length of arc in degrees:
+    let arcLength = endAngle - startAngle;
+    if (arcLength < 0) arcLength += 360;
+    
+    const largeArc = arcLength > 180 ? 1 : 0;
     const p1 = polarToCartesian(startAngle);
     const p2 = polarToCartesian(endAngle);
+    
     const arcPath = `M ${p1.x} ${p1.y} A ${R} ${R} 0 ${largeArc} 1 ${p2.x} ${p2.y}`;
 
-    // Decorations
+    // Ticks
     const numbers = [8, 9, 10, 11, 12, 1, 2, 3, 4];
 
     return (
         <div className="flex items-center justify-center select-none scale-90 sm:scale-100">
             <svg ref={svgRef} width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="cursor-pointer">
-                {/* Background Circle */}
-                <circle cx={CX} cy={CY} r={R} fill="none" stroke="#f3f4f6" strokeWidth="24" className="dark:stroke-gray-700" />
-                
+                {/* Background Track (Only 8 to 4) */}
+                {/* 8am is 240, 4pm is 120. Total 240 deg arc */}
+                <path d={`M ${polarToCartesian(240).x} ${polarToCartesian(240).y} A ${R} ${R} 0 1 1 ${polarToCartesian(120).x} ${polarToCartesian(120).y}`} 
+                      fill="none" stroke="#f3f4f6" strokeWidth="24" strokeLinecap="round" className="dark:stroke-gray-700" />
+
                 {/* Active Arc */}
-                <path d={arcPath} fill="none" stroke="#6366f1" strokeWidth="24" strokeLinecap="round" className="opacity-40" />
-                
+                <path d={arcPath} fill="none" stroke="#0d9488" strokeWidth="24" strokeLinecap="round" className="opacity-60 drop-shadow-sm" />
+
                 {/* Ticks/Numbers */}
                 {numbers.map(num => {
-                    // Convert 12h num to 24h for angle calc
                     let h24 = num;
                     if (num >= 1 && num <= 4) h24 += 12;
                     const ang = timeToAngle(h24, 0);
@@ -235,20 +243,20 @@ const CircularTimePicker: React.FC<CircularTimePickerProps> = ({
                 })}
 
                 {/* Handles */}
-                <g transform={`translate(${p1.x}, ${p1.y})`} onMouseDown={() => setIsDraggingStart(true)} onTouchStart={() => setIsDraggingStart(true)} className="cursor-grab active:cursor-grabbing hover:scale-110 transition-transform">
-                    <circle r="18" fill="white" className="drop-shadow-md" />
-                    <circle r="12" fill="#10b981" />
-                    <text dy="4" textAnchor="middle" className="text-[10px] font-bold fill-white pointer-events-none">من</text>
+                <g transform={`translate(${p1.x}, ${p1.y})`} onMouseDown={() => setIsDraggingStart(true)} onTouchStart={() => setIsDraggingStart(true)} className="cursor-grab active:cursor-grabbing hover:scale-110 transition-transform z-10">
+                    <circle r="16" fill="white" className="drop-shadow-md" />
+                    <circle r="10" fill="#14b8a6" /> {/* Teal-500 */}
+                    <text dy="4" textAnchor="middle" className="text-[9px] font-bold fill-white pointer-events-none">من</text>
                 </g>
-                <g transform={`translate(${p2.x}, ${p2.y})`} onMouseDown={() => setIsDraggingEnd(true)} onTouchStart={() => setIsDraggingEnd(true)} className="cursor-grab active:cursor-grabbing hover:scale-110 transition-transform">
-                    <circle r="18" fill="white" className="drop-shadow-md" />
-                    <circle r="12" fill="#ef4444" />
-                    <text dy="4" textAnchor="middle" className="text-[10px] font-bold fill-white pointer-events-none">إلى</text>
+                <g transform={`translate(${p2.x}, ${p2.y})`} onMouseDown={() => setIsDraggingEnd(true)} onTouchStart={() => setIsDraggingEnd(true)} className="cursor-grab active:cursor-grabbing hover:scale-110 transition-transform z-10">
+                    <circle r="16" fill="white" className="drop-shadow-md" />
+                    <circle r="10" fill="#ef4444" /> {/* Red-500 */}
+                    <text dy="4" textAnchor="middle" className="text-[9px] font-bold fill-white pointer-events-none">إلى</text>
                 </g>
 
                 {/* Center Text */}
                 <text x={CX} y={CY - 10} textAnchor="middle" className="text-sm fill-gray-400 dark:fill-gray-500 font-medium">المدة</text>
-                <text x={CX} y={CY + 15} textAnchor="middle" className="text-2xl fill-indigo-600 dark:fill-indigo-400 font-bold">
+                <text x={CX} y={CY + 15} textAnchor="middle" className="text-2xl fill-teal-700 dark:fill-teal-400 font-bold">
                     {Math.floor((endHour * 60 + endMinute - (startHour * 60 + startMinute))/60)}:{(endHour * 60 + endMinute - (startHour * 60 + startMinute))%60 || '00'}
                 </text>
             </svg>
@@ -257,28 +265,71 @@ const CircularTimePicker: React.FC<CircularTimePickerProps> = ({
 };
 
 const UsageProgressBar: React.FC<{ used: number; current: number; total: number }> = ({ used, current, total }) => {
+    // Logic:
+    // Bar 1 (Gray): Used previously.
+    // Bar 2 (Teal): Current Request.
+    // If Used + Current > Total => Bar 2 becomes Red for the overflow part.
+    
+    const totalRequest = used + current;
+    const isOverLimit = totalRequest > total;
+    
     const usedPercent = Math.min((used / total) * 100, 100);
-    const currentPercent = Math.min((current / total) * 100, 100 - usedPercent);
-    const remaining = Math.max(total - used - current, 0);
-
+    const currentPercent = Math.min((current / total) * 100, 100 - usedPercent); // Fit within remaining if possible for display
+    
+    // If over limit, we visually indicate full bar, but color changes
+    
     return (
-        <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-            <div className="flex justify-between text-xs text-gray-500 mb-2 font-medium">
-                <span>المستخدم ({used.toFixed(2)} س)</span>
-                <span>المتبقي ({remaining.toFixed(2)} س)</span>
+        <div className={`p-5 rounded-2xl border ${isOverLimit ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700'} shadow-sm`}>
+            <div className="flex justify-between items-end mb-3">
+                <span className="text-sm font-bold text-gray-700 dark:text-gray-200">ملخص الاستهلاك الشهري</span>
+                <span className={`text-sm font-bold ${isOverLimit ? 'text-red-600' : 'text-teal-600'}`}>
+                    {totalRequest.toFixed(2)} / {total} ساعة
+                </span>
             </div>
-            <div className="h-4 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex">
-                <div style={{ width: `${usedPercent}%` }} className="bg-gray-400 dark:bg-gray-500" title="رصيد مستخدم سابقاً"></div>
-                <div style={{ width: `${currentPercent}%` }} className={`transition-all duration-500 ${remaining < 0 ? 'bg-red-500' : 'bg-indigo-500 relative overflow-hidden'}`} title="الطلب الحالي">
-                     <div className="absolute inset-0 bg-white/20 w-full h-full animate-[shimmer_2s_infinite] skew-x-12"></div>
+            
+            <div className="h-6 w-full bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden flex relative">
+                {/* Background Grid Lines (Optional) */}
+                <div className="absolute inset-0 flex">
+                    {[1,2,3,4,5,6,7].map(i => (
+                        <div key={i} className="flex-1 border-r border-white/20 h-full"></div>
+                    ))}
+                </div>
+
+                {/* Used Segment */}
+                <div style={{ width: `${usedPercent}%` }} className="bg-slate-400 dark:bg-slate-500 flex items-center justify-center text-[10px] text-white font-bold transition-all duration-500">
+                    {usedPercent > 10 && `${used.toFixed(1)}`}
+                </div>
+                
+                {/* Current Request Segment */}
+                <div 
+                    style={{ width: isOverLimit ? `${100 - usedPercent}%` : `${currentPercent}%` }} 
+                    className={`${isOverLimit ? 'bg-red-500' : 'bg-teal-500'} flex items-center justify-center text-[10px] text-white font-bold transition-all duration-500 relative overflow-hidden`}
+                >
+                    <div className="absolute inset-0 bg-white/20 w-full h-full animate-[shimmer_2s_infinite] skew-x-12"></div>
+                    {current > 0.1 && `${current.toFixed(1)}`}
                 </div>
             </div>
-            <div className="mt-2 flex justify-between items-center">
-                <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                    الطلب الحالي: {current.toFixed(2)} ساعة
-                </span>
-                <span className="text-[10px] text-gray-400">إجمالي الحد الشهري: {total} ساعات</span>
+
+            <div className="flex justify-between mt-3 text-xs font-medium">
+                <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-slate-400 block"></span>
+                    <span className="text-gray-500">مستنفذ ({used.toFixed(2)})</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full block ${isOverLimit ? 'bg-red-500' : 'bg-teal-500'}`}></span>
+                    <span className={isOverLimit ? 'text-red-500 font-bold' : 'text-teal-600'}>الطلب الحالي ({current.toFixed(2)})</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-gray-100 border border-gray-300 block"></span>
+                    <span className="text-gray-400">متبقي ({Math.max(0, total - totalRequest).toFixed(2)})</span>
+                </div>
             </div>
+            
+            {isOverLimit && (
+                <p className="text-xs text-red-500 mt-2 font-bold text-center animate-pulse">
+                    ⚠️ تنبيه: هذا الطلب يتجاوز رصيدك الشهري المتاح!
+                </p>
+            )}
         </div>
     );
 };
@@ -304,7 +355,7 @@ const DynamicField: React.FC<{ field: FormField; value: any; onChange: (id: stri
                     onChange={handleChange} 
                     required={field.required} 
                     rows={4} 
-                    className="block w-full pr-10 rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-base dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    className="block w-full pr-10 rounded-xl border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 text-base dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                     placeholder="اكتب سبب الاستئذان بالتفصيل..."
                 />
              </div>
@@ -316,18 +367,18 @@ const DynamicField: React.FC<{ field: FormField; value: any; onChange: (id: stri
         case FieldType.NUMBER:
         case FieldType.DATE:
         case FieldType.TIME:
-            return <input type={field.type} id={field.id} value={value || ''} onChange={handleChange} required={field.required} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white h-10" />;
+            return <input type={field.type} id={field.id} value={value || ''} onChange={handleChange} required={field.required} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white h-10" />;
         case FieldType.TEXTAREA:
-             return <textarea id={field.id} value={value || ''} onChange={handleChange} required={field.required} rows={3} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />;
+             return <textarea id={field.id} value={value || ''} onChange={handleChange} required={field.required} rows={3} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />;
         case FieldType.SELECT:
             return (
-                <select id={field.id} value={value || ''} onChange={handleChange} required={field.required} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white h-10">
+                <select id={field.id} value={value || ''} onChange={handleChange} required={field.required} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white h-10">
                     <option value="">اختر...</option>
                     {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                 </select>
             );
         case FieldType.FILE:
-            return <input type="file" id={field.id} onChange={handleFileChange} required={field.required} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:text-gray-400 dark:file:bg-indigo-900 dark:file:text-indigo-300 dark:hover:file:bg-indigo-800"/>;
+            return <input type="file" id={field.id} onChange={handleFileChange} required={field.required} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100 dark:text-gray-400 dark:file:bg-teal-900 dark:file:text-teal-300 dark:hover:file:bg-teal-800"/>;
         default:
             return null;
     }
@@ -335,6 +386,9 @@ const DynamicField: React.FC<{ field: FormField; value: any; onChange: (id: stri
 
 const RequestForm: React.FC = () => {
     const { serviceId } = useParams<{ serviceId: string }>();
+    const [searchParams] = useSearchParams();
+    const draftId = searchParams.get('draftId'); // Check if editing a draft
+    
     const navigate = useNavigate();
     const { user, employeeData } = useAuth();
     
@@ -344,6 +398,7 @@ const RequestForm: React.FC = () => {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [permissionUsage, setPermissionUsage] = useState<number>(0);
+    const [hasPendingRequest, setHasPendingRequest] = useState(false);
 
     // Clock States (Start 8:00, End 10:00 default)
     const [startHour, setStartHour] = useState(8);
@@ -355,43 +410,63 @@ const RequestForm: React.FC = () => {
 
     useEffect(() => {
         if (!serviceId) return;
-        const fetchService = async () => {
+        const initForm = async () => {
             setLoading(true);
             try {
+                // 1. Fetch Service Definition
                 const serviceDef = await getServiceDefinition(serviceId);
                 setService(serviceDef);
                 
-                if (isPermissionService && user) {
-                    const now = new Date();
-                    const used = await getMonthlyPermissionUsage(user.uid, now.getMonth(), now.getFullYear());
-                    setPermissionUsage(used || 0);
-                    setFormData(prev => ({...prev, date: new Date().toISOString().split('T')[0]}));
+                if (user) {
+                    // 2. Check for Pending Requests (Blocker)
+                    // We only block creating NEW requests, not editing an existing draft/returned request.
+                    const userReqs = await getEmployeeRequests(user.uid);
+                    const pending = userReqs.find(r => r.serviceId === serviceId && r.status === RequestStatus.PENDING);
+                    if (pending && !draftId) { // Only block if not editing a specific draft
+                        setHasPendingRequest(true);
+                        setLoading(false);
+                        return;
+                    }
+
+                    // 3. Load Draft Data (if draftId present)
+                    if (draftId) {
+                        const existingReq = await getRequestDetails(draftId);
+                        if (existingReq.employeeId !== user.uid) throw new Error("Unauthorized");
+                        setFormData(existingReq.payload);
+                        
+                        // If it's permission, load time
+                        if (isPermissionService && existingReq.payload.startTime && existingReq.payload.endTime) {
+                            const [sh, sm] = existingReq.payload.startTime.split(':').map(Number);
+                            const [eh, em] = existingReq.payload.endTime.split(':').map(Number);
+                            setStartHour(sh); setStartMinute(sm);
+                            setEndHour(eh); setEndMinute(em);
+                        }
+                    } else if (isPermissionService) {
+                        // Defaults for new request
+                        setFormData(prev => ({...prev, date: new Date().toISOString().split('T')[0]}));
+                    }
+
+                    // 4. Fetch Usage (if permission)
+                    if (isPermissionService) {
+                        const now = new Date();
+                        const used = await getMonthlyPermissionUsage(user.uid, now.getMonth(), now.getFullYear());
+                        setPermissionUsage(used || 0);
+                    }
                 }
             } catch (err) {
-                setError("لا يمكن تحميل تعريف الخدمة.");
+                console.error(err);
+                setError("فشل تحميل البيانات أو المسودة.");
             }
             setLoading(false);
         };
-        fetchService();
-    }, [serviceId, user, isPermissionService]);
+        initForm();
+    }, [serviceId, user, isPermissionService, draftId]);
 
     // Validate times
     const validateTimeInput = (h: number, m: number, isStart: boolean) => {
         // Enforce work hours 8 - 16
         if (h < 8) { h = 8; m = 0; }
         if (h > 16 || (h === 16 && m > 0)) { h = 16; m = 0; }
-        
-        // Logical constraint (Start < End)
-        const total = h * 60 + m;
-        const compareTotal = isStart ? (endHour * 60 + endMinute) : (startHour * 60 + startMinute);
-
-        if (isStart && total >= compareTotal) {
-            // Push end forward if possible
-            // Or just return previous values? Better to clamp.
-            // Let's just update state, the Circular Picker has logic to prevent crossover dragging, 
-            // but manual input needs checking.
-            // Allow update, but handleSubmit will validate.
-        }
         
         if (isStart) {
             setStartHour(h); setStartMinute(m);
@@ -445,14 +520,14 @@ const RequestForm: React.FC = () => {
             let type = "خروج أثناء الدوام";
             if (startHour === 8 && startMinute === 0) type = "تأخر عن العمل";
 
-            if ((permissionUsage + durationHours) > 8) {
+            if (!isDraft && (permissionUsage + durationHours) > 8) {
                 setError("عذراً، الرصيد المتاح لا يكفي لهذا الطلب.");
                 return;
             }
             finalPayload.type = type;
             finalPayload.durationMinutes = durationMinutes;
             finalPayload.durationHours = durationHours;
-            finalPayload.permissionType = type; // Duplicate for safety
+            finalPayload.permissionType = type; 
         }
 
         setSubmitting(true);
@@ -461,7 +536,7 @@ const RequestForm: React.FC = () => {
         try {
             const payload: Record<string, any> = {};
             for (const field of service.fields) {
-                if (field.type === FieldType.FILE && finalPayload[field.id]) {
+                if (field.type === FieldType.FILE && finalPayload[field.id] instanceof File) {
                     const file = finalPayload[field.id] as File;
                     const fileUrl = await uploadFile(file); 
                     payload[field.id] = fileUrl;
@@ -477,11 +552,18 @@ const RequestForm: React.FC = () => {
                 payload.endTime = finalPayload.endTime;
             }
             
-            await createRequest(user.uid, employeeData.name, service, payload, isDraft);
+            if (draftId) {
+                // Update Existing Request
+                await updateRequest(draftId, user.uid, service, payload, isDraft);
+            } else {
+                // Create New Request
+                await createRequest(user.uid, employeeData.name, service, payload, isDraft);
+            }
+            
             navigate('/dashboard');
 
         } catch (err) {
-            setError("فشل إنشاء الطلب. يرجى المحاولة مرة أخرى.");
+            setError("فشل حفظ الطلب. يرجى المحاولة مرة أخرى.");
             console.error(err);
         } finally {
             setSubmitting(false);
@@ -489,6 +571,24 @@ const RequestForm: React.FC = () => {
     };
     
     if (loading) return <div className="flex justify-center items-center h-full"><Spinner /></div>;
+    
+    if (hasPendingRequest) {
+        return (
+            <div className="flex flex-col items-center justify-center h-96 text-center space-y-4">
+                <div className="bg-yellow-100 p-6 rounded-full">
+                    <span className="text-4xl">⏳</span>
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white">يوجد طلب قيد الانتظار</h2>
+                <p className="text-gray-600 dark:text-gray-400 max-w-md">
+                    لا يمكنك تقديم طلب جديد لهذه الخدمة لأن لديك طلب سابق ما زال قيد المراجعة. يرجى انتظار الرد النهائي.
+                </p>
+                <button onClick={() => navigate('/my-requests')} className="text-teal-600 font-bold hover:underline">
+                    الذهاب إلى طلباتي
+                </button>
+            </div>
+        );
+    }
+
     if (!service) return <p className="text-center text-red-500">{error || "لم يتم العثور على الخدمة."}</p>;
 
     return (
@@ -497,7 +597,9 @@ const RequestForm: React.FC = () => {
             
             <div className="flex justify-between items-end mb-6">
                 <div>
-                     <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-1">{service.title}</h1>
+                     <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-1">
+                        {draftId ? `تعديل: ${service.title}` : service.title}
+                     </h1>
                      <p className="text-gray-500 dark:text-gray-400 text-sm">أدخل تفاصيل الطلب أدناه.</p>
                 </div>
             </div>
@@ -546,7 +648,7 @@ const RequestForm: React.FC = () => {
                                         hour={startHour} minute={startMinute} 
                                         onHourChange={(h) => validateTimeInput(h, startMinute, true)}
                                         onMinuteChange={(m) => validateTimeInput(startHour, m, true)}
-                                        colorClass="border-green-100 dark:border-green-900"
+                                        colorClass="border-teal-100 dark:border-teal-900"
                                     />
                                     <TimeInput 
                                         label="وقت النهاية (إلى)" 
@@ -601,10 +703,10 @@ const RequestForm: React.FC = () => {
                         disabled={submitting}
                         className="px-6 py-3 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 font-medium"
                     >
-                        حفظ كمسودة
+                        {draftId ? 'تحديث المسودة' : 'حفظ كمسودة'}
                     </button>
-                    <button type="submit" disabled={submitting} className="px-8 py-3 rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 hover:-translate-y-1 transition-all font-bold disabled:bg-indigo-400">
-                        {submitting ? 'جاري الإرسال...' : 'تقديم الطلب'}
+                    <button type="submit" disabled={submitting} className="px-8 py-3 rounded-xl bg-teal-600 text-white shadow-lg shadow-teal-200 dark:shadow-none hover:bg-teal-700 hover:-translate-y-1 transition-all font-bold disabled:bg-teal-400">
+                        {submitting ? 'جاري الإرسال...' : (draftId ? 'تعديل وإرسال الطلب' : 'تقديم الطلب')}
                     </button>
                 </div>
             </form>

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { auth } from '../services/firebaseConfig';
-import firebase from 'firebase/app';
+import firebase from 'firebase/compat/app';
 import { getEmployeeData } from '../services/firebaseService';
 import { Employee } from '../types';
 

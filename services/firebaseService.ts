@@ -1,7 +1,7 @@
 import { db, firebaseConfig } from './firebaseConfig';
-import firebase from 'firebase/app';
-import 'firebase/auth';
-import 'firebase/firestore';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 import { Employee, ServiceDefinition, Request, RequestStatus, ApprovalStepType, FieldType, SystemRole } from '../types';
 
 // --- الثوابت (Hardcoded Services) ---

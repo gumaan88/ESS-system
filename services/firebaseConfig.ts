@@ -1,6 +1,6 @@
-import firebase from 'firebase/app';
-import 'firebase/auth';
-import 'firebase/firestore';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 
 // الوصول للمتغيرات البيئية بشكل آمن لتجنب أخطاء Undefined
 const env = (import.meta as any).env || {};
@@ -19,7 +19,7 @@ if (!firebaseConfig.apiKey) {
   console.error("Firebase Configuration Error: VITE_FIREBASE_API_KEY is missing. Please check your .env file.");
 }
 
-// تهيئة التطبيق بنمط Singleton (v8 style)
+// تهيئة التطبيق بنمط Singleton (Compat style)
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }

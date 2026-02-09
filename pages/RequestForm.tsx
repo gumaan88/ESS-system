@@ -419,7 +419,6 @@ const RequestForm: React.FC = () => {
                 
                 if (user) {
                     // 2. Check for Pending Requests (Blocker)
-                    // We only block creating NEW requests, not editing an existing draft/returned request.
                     const userReqs = await getEmployeeRequests(user.uid);
                     const pending = userReqs.find(r => r.serviceId === serviceId && r.status === RequestStatus.PENDING);
                     if (pending && !draftId) { // Only block if not editing a specific draft
@@ -475,17 +474,7 @@ const RequestForm: React.FC = () => {
         }
     };
 
-    useEffect(() => {
-        if (isPermissionService) {
-            const formattedStart = `${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`;
-            const formattedEnd = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
-            setFormData(prev => ({
-                ...prev,
-                startTime: formattedStart,
-                endTime: formattedEnd
-            }));
-        }
-    }, [startHour, startMinute, endHour, endMinute, isPermissionService]);
+    // removed sync useEffect to avoid race conditions - using calculate on submit instead
 
     const handleFormChange = (id: string, value: any) => {
         setFormData(prev => ({ ...prev, [id]: value }));
@@ -524,10 +513,17 @@ const RequestForm: React.FC = () => {
                 setError("عذراً، الرصيد المتاح لا يكفي لهذا الطلب.");
                 return;
             }
+            
+            // Format times strictly here to ensure payload is correct
+            const formattedStart = `${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`;
+            const formattedEnd = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
+
             finalPayload.type = type;
             finalPayload.durationMinutes = durationMinutes;
             finalPayload.durationHours = durationHours;
             finalPayload.permissionType = type; 
+            finalPayload.startTime = formattedStart;
+            finalPayload.endTime = formattedEnd;
         }
 
         setSubmitting(true);
@@ -544,12 +540,14 @@ const RequestForm: React.FC = () => {
                     payload[field.id] = finalPayload[field.id];
                 }
             }
-            // Add extra fields
+            // Add extra fields explicitly
             if (isPermissionService) {
                 payload.permissionType = finalPayload.type;
                 payload.durationMinutes = finalPayload.durationMinutes;
                 payload.startTime = finalPayload.startTime;
                 payload.endTime = finalPayload.endTime;
+                payload.date = finalPayload.date; // Ensure date is there
+                payload.reason = finalPayload.reason; // Ensure reason is there
             }
             
             if (draftId) {

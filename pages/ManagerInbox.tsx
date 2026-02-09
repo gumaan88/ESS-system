@@ -64,7 +64,7 @@ const ManagerInbox: React.FC = () => {
                 } catch (error: any) {
                     console.error("Error fetching data:", error);
                     if (error.code === 'permission-denied') {
-                        setErrorMsg("تم رفض الوصول. تأكد من قواعد الأمان (Firestore Rules).");
+                        setErrorMsg("تم رفض الوصول (Permission Denied). يرجى التأكد من أن قواعد الأمان (Firestore Rules) تسمح للمدراء بالقراءة.");
                     } else if (error.code === 'failed-precondition') {
                          setErrorMsg("مطلوب فهرس (Index) لهذا الاستعلام. راجع الكونسول.");
                     } else {
@@ -142,9 +142,16 @@ const ManagerInbox: React.FC = () => {
 
              {/* --- ERROR MESSAGE --- */}
              {errorMsg && (
-                <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-md" role="alert">
-                    <p className="font-bold">حدث خطأ أثناء جلب البيانات</p>
-                    <p>{errorMsg}</p>
+                <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-md flex justify-between items-center" role="alert">
+                    <div>
+                        <p className="font-bold">حدث خطأ أثناء جلب البيانات</p>
+                        <p>{errorMsg}</p>
+                    </div>
+                    {errorMsg.includes('Permission Denied') && (
+                         <div className="text-xs bg-white p-2 rounded">
+                             <span className="font-bold">ملاحظة للمطور:</span> انسخ محتوى ملف <code>firestore.rules</code> الموجود في الكود وضعه في Firebase Console.
+                         </div>
+                    )}
                 </div>
             )}
             

@@ -24,7 +24,7 @@ const RequestDetails: React.FC = () => {
     
     const [request, setRequest] = useState<Request | null>(null);
     const [requestor, setRequestor] = useState<Employee | null>(null);
-    const [assigneeName, setAssigneeName] = useState<string>(''); // For tracking who has the request
+    const [assigneeName, setAssigneeName] = useState<string>(''); 
     const [loading, setLoading] = useState(true);
     const [action, setAction] = useState<'APPROVE' | 'REJECT' | 'RETURN' | null>(null);
     const [note, setNote] = useState('');
@@ -40,10 +40,15 @@ const RequestDetails: React.FC = () => {
                 setRequest(reqDetails);
                 
                 if (reqDetails) {
-                    const reqtorData = await getEmployeeData(reqDetails.employeeId);
-                    setRequestor(reqtorData);
+                    // Fetch Requestor Data
+                    try {
+                        const reqtorData = await getEmployeeData(reqDetails.employeeId);
+                        setRequestor(reqtorData);
+                    } catch (e) {
+                        console.warn("Could not fetch requestor data", e);
+                    }
 
-                    // Fetch current assignee name if pending
+                    // Fetch Assignee Name if needed
                     if (reqDetails.status === RequestStatus.PENDING && reqDetails.assignedTo) {
                         try {
                             const assignee = await getEmployeeData(reqDetails.assignedTo);
@@ -53,8 +58,13 @@ const RequestDetails: React.FC = () => {
                         }
                     }
                 }
-            } catch (err) {
-                setError("لا يمكن تحميل تفاصيل الطلب.");
+            } catch (err: any) {
+                console.error(err);
+                if (err.code === 'permission-denied') {
+                    setError("ليس لديك صلاحية لعرض هذا الطلب (Permission Denied).");
+                } else {
+                    setError("لا يمكن تحميل تفاصيل الطلب.");
+                }
             }
             setLoading(false);
         };
@@ -63,6 +73,7 @@ const RequestDetails: React.FC = () => {
     
     // Check permissions
     const isOwner = user && request && request.employeeId === user.uid;
+    // Strict check: User must be logged in, Request must be loaded, User UID must match AssignedTo, Status must be PENDING
     const canTakeAction = user && request && request.assignedTo === user.uid && request.status === RequestStatus.PENDING;
     const isDraftOrReturned = isOwner && (request?.status === RequestStatus.DRAFT || request?.status === RequestStatus.RETURNED);
 
@@ -79,7 +90,12 @@ const RequestDetails: React.FC = () => {
             await processRequestAction(requestId, action, note, user.uid, employeeData.name);
             setAction(null);
             setNote('');
-            navigate('/inbox');
+            // Navigate back to inbox if manager, or my requests if owner
+            if (canTakeAction) {
+                navigate('/inbox');
+            } else {
+                navigate('/my-requests');
+            }
         } catch (err) {
             setError("حدث خطأ أثناء معالجة الإجراء.");
             console.error(err);
@@ -93,31 +109,48 @@ const RequestDetails: React.FC = () => {
     };
 
     if (loading) return <div className="flex justify-center items-center h-full"><Spinner /></div>;
-    if (!request || !requestor) return <p className="text-center text-red-500">{error || "لم يتم العثور على الطلب."}</p>;
+    
+    if (error) return (
+        <div className="flex flex-col items-center justify-center h-64 text-center">
+            <div className="text-red-500 text-5xl mb-4">🚫</div>
+            <h3 className="text-xl font-bold text-gray-800 dark:text-white">خطأ في الوصول</h3>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">{error}</p>
+            <button onClick={() => navigate(-1)} className="mt-4 text-teal-600 hover:underline">العودة</button>
+        </div>
+    );
+
+    if (!request) return <p className="text-center text-red-500">لم يتم العثور على الطلب.</p>;
 
     const getStatusChipClass = (status: RequestStatus) => {
         switch (status) {
-            case RequestStatus.APPROVED: return 'bg-green-100 text-green-800';
-            case RequestStatus.REJECTED: return 'bg-red-100 text-red-800';
-            case RequestStatus.PENDING: return 'bg-yellow-100 text-yellow-800';
-            case RequestStatus.RETURNED: return 'bg-blue-100 text-blue-800';
-            case RequestStatus.DRAFT: return 'bg-gray-200 text-gray-800';
+            case RequestStatus.APPROVED: return 'bg-green-100 text-green-800 border-green-200';
+            case RequestStatus.REJECTED: return 'bg-red-100 text-red-800 border-red-200';
+            case RequestStatus.PENDING: return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+            case RequestStatus.RETURNED: return 'bg-blue-100 text-blue-800 border-blue-200';
+            case RequestStatus.DRAFT: return 'bg-gray-200 text-gray-800 border-gray-300';
             default: return 'bg-gray-100 text-gray-800';
         }
     };
 
     return (
-        <div className="max-w-4xl mx-auto animate-in fade-in duration-500">
+        <div className="max-w-4xl mx-auto animate-in fade-in duration-500 pb-12">
             <Notification message={error} type="error" onClose={() => setError('')} />
 
-            <div className="bg-white dark:bg-gray-800 shadow-xl rounded-2xl p-8 border border-gray-100 dark:border-gray-700">
-                <div className="flex flex-col md:flex-row justify-between items-start mb-6 border-b border-gray-100 dark:border-gray-700 pb-4">
+            <div className="bg-white dark:bg-gray-800 shadow-xl rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-700">
+                {/* Header */}
+                <div className="bg-gray-50 dark:bg-gray-900/50 p-6 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{request.serviceTitle}</h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">مقدم من: {requestor.name} - {requestor.department}</p>
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="text-2xl">📝</span>
+                            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{request.serviceTitle}</h1>
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                            مقدم الطلب: <span className="font-semibold text-gray-800 dark:text-gray-200">{requestor?.name || request.employeeName}</span>
+                            {requestor?.department && ` - ${requestor.department}`}
+                        </p>
                     </div>
-                    <div className="mt-4 md:mt-0 text-right">
-                        <span className={`px-4 py-1 text-sm font-semibold rounded-full block text-center mb-2 ${getStatusChipClass(request.status)}`}>
+                    <div className="flex flex-col items-end">
+                        <span className={`px-4 py-1.5 text-sm font-bold rounded-full border ${getStatusChipClass(request.status)}`}>
                             {request.status === RequestStatus.DRAFT ? 'مسودة' :
                              request.status === RequestStatus.PENDING ? 'قيد الانتظار' :
                              request.status === RequestStatus.APPROVED ? 'مقبول' :
@@ -125,92 +158,157 @@ const RequestDetails: React.FC = () => {
                              request.status === RequestStatus.RETURNED ? 'معاد للتعديل' : request.status}
                         </span>
                         {request.status === RequestStatus.PENDING && assigneeName && (
-                            <p className="text-xs text-gray-500">بانتظار موافقة: <span className="font-bold text-gray-700 dark:text-gray-300">{assigneeName}</span></p>
+                            <p className="text-xs text-gray-500 mt-2">
+                                المسؤول الحالي: <span className="font-bold text-gray-700 dark:text-gray-300">{assigneeName}</span>
+                            </p>
                         )}
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
                     {/* Request Payload */}
                     <div className="space-y-4">
-                        <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 border-b pb-2 flex items-center">
-                            <span className="ml-2">📄</span> تفاصيل الطلب
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2">
+                            تفاصيل الطلب
                         </h3>
-                        <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 space-y-3">
-                            {Object.entries(request.payload).map(([key, value]) => (
-                                <div key={key} className="flex flex-col sm:flex-row justify-between border-b border-gray-200 dark:border-gray-800 last:border-0 pb-2 last:pb-0">
-                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        {FIELD_LABELS[key] || key}
-                                    </dt>
-                                    <dd className="mt-1 sm:mt-0 text-sm font-bold text-gray-900 dark:text-white text-left">
-                                        {typeof value === 'string' && (value.startsWith('http') || value.startsWith('https')) ? 
-                                            <a href={value} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline flex items-center gap-1">
-                                                <span>📎</span> عرض المرفق
-                                            </a> : 
-                                            value}
-                                    </dd>
+                        <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-5 space-y-4">
+                            {/* Special display for Time Range */}
+                            {request.payload.startTime && request.payload.endTime && (
+                                <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-800 pb-3">
+                                     <dt className="text-sm text-gray-500 dark:text-gray-400">الوقت</dt>
+                                     <dd className="text-sm font-bold text-teal-600 dark:text-teal-400 dir-ltr">
+                                         {request.payload.startTime} - {request.payload.endTime}
+                                     </dd>
                                 </div>
-                            ))}
+                            )}
+
+                            {Object.entries(request.payload).map(([key, value]) => {
+                                // Skip start/end time as we displayed them above
+                                if (key === 'startTime' || key === 'endTime') return null;
+                                
+                                return (
+                                    <div key={key} className="flex flex-col sm:flex-row justify-between border-b border-gray-200 dark:border-gray-800 last:border-0 pb-3 last:pb-0">
+                                        <dt className="text-sm text-gray-500 dark:text-gray-400">
+                                            {FIELD_LABELS[key] || key}
+                                        </dt>
+                                        <dd className="mt-1 sm:mt-0 text-sm font-bold text-gray-900 dark:text-white text-left break-words max-w-full sm:max-w-[70%]">
+                                            {typeof value === 'string' && (value.startsWith('http') || value.startsWith('https')) ? 
+                                                <a href={value} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline flex items-center gap-1">
+                                                    <span>📎</span> عرض المرفق
+                                                </a> : 
+                                                value}
+                                        </dd>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
 
                     {/* History Timeline */}
                     <div className="space-y-4">
-                        <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200 border-b pb-2 flex items-center">
-                            <span className="ml-2">🕒</span> سجل الإجراءات
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2">
+                            سجل الإجراءات
                         </h3>
-                        <ol className="relative border-s border-gray-200 dark:border-gray-700 mr-2">
+                        <div className="relative border-r border-gray-200 dark:border-gray-700 pr-4 mr-2">
                            {request.history.map((entry, index) => (
-                               <li key={index} className="mb-6 ms-4">
-                                   <div className="absolute w-3 h-3 bg-teal-200 rounded-full mt-1.5 -start-1.5 border border-white dark:border-gray-900 dark:bg-teal-700"></div>
-                                   <time className="mb-1 text-xs font-normal leading-none text-gray-400 dark:text-gray-500">{entry.time.toDate().toLocaleString('ar-EG')}</time>
-                                   <h3 className="text-sm font-bold text-gray-900 dark:text-white">{entry.action} <span className="font-normal text-gray-500">بواسطة</span> {entry.user}</h3>
-                                   {entry.note && <p className="text-sm font-normal text-gray-600 dark:text-gray-300 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-800 p-2 rounded-md mt-2">{entry.note}</p>}
-                               </li>
+                               <div key={index} className="mb-6 relative">
+                                   <div className="absolute w-3 h-3 bg-teal-500 rounded-full mt-1.5 -right-[21px] border-2 border-white dark:border-gray-800"></div>
+                                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-baseline">
+                                       <h4 className="text-sm font-bold text-gray-900 dark:text-white">{entry.action}</h4>
+                                       <time className="text-xs text-gray-400">{entry.time?.toDate ? entry.time.toDate().toLocaleString('ar-EG') : 'Invalid Date'}</time>
+                                   </div>
+                                   <p className="text-xs text-gray-500 mt-0.5">بواسطة: {entry.user}</p>
+                                   {entry.note && (
+                                       <div className="mt-2 text-sm text-gray-600 dark:text-gray-300 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-100 dark:border-yellow-800/50 p-2 rounded-lg">
+                                           "{entry.note}"
+                                       </div>
+                                   )}
+                               </div>
                            ))}
-                        </ol>
+                        </div>
                     </div>
                 </div>
                 
-                {/* --- Draft/Returned Actions (For Requester) --- */}
-                {isDraftOrReturned && (
-                     <div className="mt-8 pt-6 border-t dark:border-gray-700 flex justify-end">
-                        <button 
-                            onClick={handleEditDraft}
-                            className="flex items-center gap-2 px-6 py-3 bg-teal-600 text-white rounded-xl shadow-lg shadow-teal-200 dark:shadow-none hover:bg-teal-700 transition-all font-bold animate-pulse"
-                        >
-                            <span>✏️</span>
-                            {request.status === RequestStatus.DRAFT ? 'استكمال المسودة' : 'تعديل وإعادة الإرسال'}
-                        </button>
-                    </div>
-                )}
-
-                {/* --- Approval Actions (For Manager) --- */}
+                {/* --- MANAGER ACTIONS AREA --- */}
                 {canTakeAction && !action && (
-                    <div className="mt-8 pt-6 border-t dark:border-gray-700 flex justify-end space-x-3 space-x-reverse">
-                        <button onClick={() => setAction('RETURN')} className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors">طلب تعديل</button>
-                        <button onClick={() => setAction('REJECT')} className="px-4 py-2 text-sm font-medium text-red-700 bg-red-100 rounded-lg hover:bg-red-200 transition-colors">رفض</button>
-                        <button onClick={() => setAction('APPROVE')} className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-md">موافقة</button>
+                    <div className="bg-gray-50 dark:bg-gray-900 p-6 border-t border-gray-200 dark:border-gray-700">
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">اتخاذ قرار</h3>
+                        <div className="flex flex-wrap gap-4 justify-end">
+                            <button 
+                                onClick={() => setAction('RETURN')} 
+                                className="flex-1 sm:flex-none px-6 py-3 bg-white border border-blue-200 text-blue-700 rounded-xl hover:bg-blue-50 font-bold shadow-sm transition-all"
+                            >
+                                ↩️ طلب تعديل
+                            </button>
+                            <button 
+                                onClick={() => setAction('REJECT')} 
+                                className="flex-1 sm:flex-none px-6 py-3 bg-white border border-red-200 text-red-700 rounded-xl hover:bg-red-50 font-bold shadow-sm transition-all"
+                            >
+                                ❌ رفض الطلب
+                            </button>
+                            <button 
+                                onClick={() => setAction('APPROVE')} 
+                                className="flex-1 sm:flex-none px-8 py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 font-bold shadow-lg shadow-teal-200 dark:shadow-none transition-all transform hover:-translate-y-1"
+                            >
+                                ✅ موافقة
+                            </button>
+                        </div>
                     </div>
                 )}
                 
+                {/* --- CONFIRMATION / NOTE AREA --- */}
                 {canTakeAction && action && (
-                     <div className="mt-8 pt-6 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4 rounded-xl">
-                         <h3 className="text-lg font-semibold mb-2 text-gray-800 dark:text-white">إضافة ملاحظة ({action === 'APPROVE' ? 'اختياري' : 'إجباري'})</h3>
+                     <div className="bg-gray-50 dark:bg-gray-900 p-6 border-t border-gray-200 dark:border-gray-700 animate-in slide-in-from-bottom-2">
+                         <h3 className="text-lg font-bold mb-2 text-gray-800 dark:text-white">
+                             {action === 'APPROVE' ? 'تأكيد الموافقة' : action === 'REJECT' ? 'سبب الرفض' : 'ملاحظات التعديل'}
+                         </h3>
+                         <p className="text-sm text-gray-500 mb-3">
+                             {action === 'APPROVE' ? 'يمكنك إضافة ملاحظة اختيارية.' : 'يرجى ذكر السبب للموظف.'}
+                         </p>
                          <textarea
                             value={note}
                             onChange={(e) => setNote(e.target.value)}
                             rows={3}
-                            className="mt-1 block w-full rounded-xl border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 sm:text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white"
-                            placeholder="اكتب ملاحظتك هنا..."
+                            autoFocus
+                            className="w-full rounded-xl border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500 text-base dark:bg-gray-800 dark:border-gray-600 dark:text-white p-3"
+                            placeholder="اكتب هنا..."
                         />
-                        <div className="mt-4 flex justify-end space-x-3 space-x-reverse">
-                            <button onClick={() => setAction(null)} disabled={processing} className="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 transition-colors">إلغاء</button>
-                            <button onClick={handleActionSubmit} disabled={processing} className="px-6 py-2 text-sm text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:bg-teal-400 font-bold shadow-md transition-all">
-                                {processing ? 'جاري التنفيذ...' : 'تأكيد الإجراء'}
+                        <div className="mt-4 flex justify-end gap-3">
+                            <button 
+                                onClick={() => { setAction(null); setError(''); }} 
+                                disabled={processing} 
+                                className="px-6 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
+                            >
+                                إلغاء
+                            </button>
+                            <button 
+                                onClick={handleActionSubmit} 
+                                disabled={processing} 
+                                className={`px-8 py-2 text-white rounded-lg font-bold shadow-md transition-all ${
+                                    action === 'APPROVE' ? 'bg-teal-600 hover:bg-teal-700' : 
+                                    action === 'REJECT' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+                                }`}
+                            >
+                                {processing ? 'جاري المعالجة...' : 'تأكيد وإرسال'}
                             </button>
                         </div>
                      </div>
+                )}
+
+                {/* --- DRAFT EDIT ACTIONS --- */}
+                {isDraftOrReturned && (
+                     <div className="bg-amber-50 dark:bg-amber-900/20 p-6 border-t border-amber-200 dark:border-amber-800 flex justify-between items-center">
+                        <div>
+                            <h3 className="font-bold text-amber-800 dark:text-amber-200">الطلب بحاجة لمراجعتك</h3>
+                            <p className="text-sm text-amber-700 dark:text-amber-300">يمكنك تعديل البيانات وإعادة الإرسال.</p>
+                        </div>
+                        <button 
+                            onClick={handleEditDraft}
+                            className="flex items-center gap-2 px-6 py-3 bg-amber-500 text-white rounded-xl shadow-lg hover:bg-amber-600 transition-all font-bold"
+                        >
+                            <span>✏️</span> تعديل الطلب
+                        </button>
+                    </div>
                 )}
             </div>
         </div>

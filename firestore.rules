@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // دالة مساعدة للتحقق من تسجيل الدخول
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // السماح بقراءة وكتابة كل شيء للمستخدمين المسجلين (وضع التطوير)
+    // ملاحظة: في مرحلة الإنتاج (Production)، يجب تقييد هذه القواعد أكثر.
+    match /{document=**} {
+      allow read, write: if isSignedIn();
+    }
+    
+    // تخصيص أكثر دقة (اختياري للمستقبل):
+    // match /requests/{requestId} {
+    //   allow create: if isSignedIn();
+    //   allow read: if isSignedIn() && (resource.data.employeeId == request.auth.uid || resource.data.assignedTo == request.auth.uid || resource.data.assignedTo == null);
+    //   allow update: if isSignedIn();
+    // }
+  }
+}
